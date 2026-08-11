@@ -60,7 +60,7 @@ src/app/
 src/components/   React components — all client-side
   Booth.tsx       capture state machine and scheduler
   Room.tsx        the two-person booth: presence, synchronised capture, shared card
-  PairStage.tsx   both halves side by side — a live rehearsal of one card slot
+  PairStage.tsx   the stage: both halves on desktop, own half + inset on mobile
   CameraStage.tsx live preview, countdown, flash
   Controls.tsx    shared control primitives — use these, don't re-roll them
 src/lib/
@@ -124,6 +124,10 @@ in the exported file, never in the browser UI. See decisions D9.
 **Verify card rendering headlessly.** `renderCard` is pure with respect to its 2D
 context, so it runs under `@napi-rs/canvas` in Node — you can render a real card to a
 PNG and look at it without a browser. That is how the serif bug above was caught.
+
+**Test the room on a phone, not just a narrow viewport.** Card slots are up to 3:1
+wide, so a portrait stage is width-limited and can collapse to ~130px — which clips
+overlays out of their own box. Desktop suites cannot see this. See D26.
 
 **Never depend on the `session` object in an effect.** `useSession` returns a fresh
 object every render. Depend on the specific destructured callback instead — and note

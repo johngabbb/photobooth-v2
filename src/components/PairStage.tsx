@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { cameraMessage, type Camera } from "@/lib/camera";
 import { useFitBox } from "@/lib/useFitBox";
+import { useIsWide } from "@/lib/useIsWide";
 import { ROLES } from "@/lib/types";
 import type { Role } from "@/lib/types";
 import type { PeerVideoState } from "@/lib/session/rtc";
@@ -18,6 +19,13 @@ import type { PeerVideoState } from "@/lib/session/rtc";
  * deliberate limit rather than a failure state: capture never depends on WebRTC, so
  * a room on a hostile network still takes photos — you just cannot see each other
  * while posing.
+ *
+ * **On a phone the halves are not side by side.** A 4-photo slot is 3:1 wide, so in
+ * portrait the two-up stage collapses to about 130px tall — too small to frame a
+ * face, and too small to fit the "Enable camera" prompt, which overflowed its box and
+ * was clipped. Below `lg` the stage therefore shows *your* half at the half's own
+ * ratio, with the other person as an inset. You still see both, and you can actually
+ * see yourself.
  */
 export function PairStage({
   camera,
@@ -54,8 +62,69 @@ export function PairStage({
     "error",
   ].includes(status);
 
-  const { ref, size } = useFitBox(slot.w / slot.h);
-  const gapPx = Math.round((size.width * splitGap) / slot.w) || 0;
+  const wide = useIsWide();
+  // Side by side fits the whole slot; stacked fits one half.
+  const halfW = (slot.w - splitGap) / 2;
+  const { ref, size } = useFitBox(wide ? slot.w / slot.h : halfW / slot.h);
+  const gapPx = wide ? Math.round((size.width * splitGap) / slot.w) || 0 : 0;
+
+  const localHalf = (
+    <>
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        autoPlay
+        className={`h-full w-full scale-x-[-1] object-cover transition-opacity duration-300 ${
+          live ? "opacity-100" : "opacity-0"
+        }`}
+      />
+
+      {status === "idle" && (
+        <Overlay>
+          <p className="max-w-[15rem] text-xs leading-snug text-cream/70 sm:text-sm">
+            Your photos stay on your device.
+          </p>
+          <button
+            type="button"
+            onClick={onStart}
+            className="rounded-full bg-honey px-5 py-2.5 text-sm font-semibold text-ink shadow-lg transition hover:brightness-105"
+          >
+            Enable camera
+          </button>
+        </Overlay>
+      )}
+
+      {status === "requesting" && (
+        <Overlay>
+          <p className="text-xs text-cream/70 sm:text-sm">Waiting for permission…</p>
+        </Overlay>
+      )}
+
+      {failed && (
+        <Overlay>
+          <p className="text-xs font-semibold text-cream sm:text-sm">
+            {cameraMessage(status).title}
+          </p>
+          <p className="max-w-[18rem] text-[11px] leading-snug text-cream/65 sm:text-xs">
+            {cameraMessage(status).hint}
+          </p>
+          {detail && (
+            <p className="hidden max-w-[18rem] font-mono text-[10px] text-cream/35 sm:block">
+              {detail}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={onStart}
+            className="mt-1 rounded-full bg-honey px-4 py-2 text-xs font-semibold text-ink"
+          >
+            Try again
+          </button>
+        </Overlay>
+      )}
+    </>
+  );
 
   return (
     <div ref={ref} className="flex h-full min-h-0 w-full items-center justify-center">
@@ -67,75 +136,31 @@ export function PairStage({
         }}
         className="relative flex overflow-hidden rounded-2xl"
       >
-        {/* Halves are drawn in ROLES order so the seam matches the rendered card:
-            Pamkin is always on the left. */}
-        {ROLES.map((slotRole) =>
-          slotRole === role ? (
-            <Half key={slotRole}>
-              <video
-                ref={videoRef}
-                playsInline
-                muted
-                autoPlay
-                className={`h-full w-full scale-x-[-1] object-cover transition-opacity duration-300 ${
-                  live ? "opacity-100" : "opacity-0"
-                }`}
-              />
-
-              {status === "idle" && (
-                <Overlay>
-                  <p className="max-w-[16rem] text-sm text-cream/70">
-                    The booth needs your camera. Photos never leave your device except
-                    to the person you are shooting with.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onStart}
-                    className="rounded-full bg-honey px-5 py-2.5 text-sm font-semibold text-ink shadow-lg transition hover:brightness-105"
-                  >
-                    Enable camera
-                  </button>
-                </Overlay>
-              )}
-
-              {status === "requesting" && (
-                <Overlay>
-                  <p className="text-sm text-cream/70">Waiting for permission…</p>
-                </Overlay>
-              )}
-
-              {failed && (
-                <Overlay>
-                  <p className="text-sm font-semibold text-cream">
-                    {cameraMessage(status).title}
-                  </p>
-                  <p className="max-w-[18rem] text-xs text-cream/65">
-                    {cameraMessage(status).hint}
-                  </p>
-                  {detail && (
-                    <p className="max-w-[18rem] font-mono text-[10px] text-cream/35">
-                      {detail}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={onStart}
-                    className="mt-1 rounded-full bg-honey px-4 py-2 text-xs font-semibold text-ink"
-                  >
-                    Try again
-                  </button>
-                </Overlay>
-              )}
-            </Half>
-          ) : (
-            <Half key={slotRole}>
+        {wide ? (
+          /* Halves in ROLES order so the seam matches the rendered card: Pamkin left. */
+          ROLES.map((slotRole) =>
+            slotRole === role ? (
+              <Half key={slotRole}>{localHalf}</Half>
+            ) : (
+              <Half key={slotRole}>
+                <PeerHalf stream={peerStream} state={peerVideo} present={peerPresent} />
+              </Half>
+            ),
+          )
+        ) : (
+          /* Portrait: your own half fills the stage, the other person insets into a
+             corner. Side by side would be ~130px tall on a phone. */
+          <Half>
+            {localHalf}
+            <div className="pointer-events-none absolute bottom-2 right-2 h-1/3 w-1/3 overflow-hidden rounded-xl bg-ink shadow-lg ring-2 ring-cream/25">
               <PeerHalf
                 stream={peerStream}
                 state={peerVideo}
                 present={peerPresent}
+                compact
               />
-            </Half>
-          ),
+            </div>
+          </Half>
         )}
 
         {countdown !== null && (
@@ -170,9 +195,15 @@ function Half({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Overlays sit inside a box whose height is dictated by the card's aspect ratio, which
+ * on a phone can be short. `overflow-y-auto` plus a small gap means the content
+ * scrolls rather than pushing the button out through `overflow-hidden` — which is
+ * exactly how the "Enable camera" button became untappable on mobile.
+ */
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-5 text-center">
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 overflow-y-auto p-3 text-center sm:gap-3 sm:p-5">
       {children}
     </div>
   );
@@ -182,10 +213,12 @@ function PeerHalf({
   stream,
   state,
   present,
+  compact = false,
 }: {
   stream: MediaStream | null;
   state: PeerVideoState;
   present: boolean;
+  compact?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
 
@@ -200,12 +233,14 @@ function PeerHalf({
   });
 
   const message = !present
-    ? "Waiting for the other person"
+    ? compact ? "Waiting" : "Waiting for the other person"
     : state === "connected"
       ? null
       : state === "failed"
-        ? "Could not open a video link — you can still take photos together"
-        : "Connecting video…";
+        ? compact
+          ? "No video"
+          : "Could not open a video link — you can still take photos together"
+        : compact ? "Connecting" : "Connecting video…";
 
   return (
     <>
@@ -222,7 +257,11 @@ function PeerHalf({
       />
       {message && (
         <Overlay>
-          <p className="max-w-[15rem] text-xs leading-relaxed text-cream/60">
+          <p
+            className={`max-w-[15rem] leading-relaxed text-cream/60 ${
+              compact ? "text-[10px]" : "text-xs"
+            }`}
+          >
             {message}
           </p>
         </Overlay>

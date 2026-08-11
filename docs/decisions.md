@@ -201,6 +201,53 @@ Two ordering rules that are easy to get wrong and were handled explicitly:
 
 ---
 
+## D26 — The stage reshapes on a phone
+
+**Status:** decided after real-device testing
+
+Below `lg` the stage shows **your own half filling the frame, with the other person
+as an inset**, rather than the two halves side by side.
+
+Side by side is right on a laptop and wrong on a phone, for a reason that is
+arithmetic rather than taste: a 4-photo slot is 1104x363, a **3:1** ratio. In portrait
+the fitted box is width-limited, so it collapses to roughly 130px tall — too small to
+frame a face, and too small to hold the "Enable camera" prompt, whose button
+overflowed the box and was clipped by `overflow-hidden`. The button was on screen and
+untappable.
+
+Two supporting fixes came out of the same report:
+
+- **Overlays scroll** (`overflow-y-auto`) instead of pushing content out through a
+  clipped edge. A box whose height is dictated by a card aspect ratio can always end
+  up shorter than its own contents.
+- **The mobile grid allocates rows explicitly** (`grid-rows-[3fr_2fr]`). Left to auto
+  sizing, the controls' content won and squeezed the stage to ~150px.
+
+Found by running the room on an actual phone. The desktop suites were all green
+throughout — nothing in them constrains how a 3:1 box behaves in portrait.
+
+---
+
+## D27 — Signalling is buffered until the peer connection exists
+
+**Status:** load-bearing
+
+Both devices construct their `PeerVideo` when they observe the *other* side publish
+`cameraReady`, so which effect runs first is a race. If the host wins, its offer
+arrives at a guest that has no connection to hand it to — and since the host never
+re-offers, the video link silently never forms.
+
+`useSession` therefore queues any `rtc-*` message that arrives with no `PeerVideo`
+present and replays the queue when one is created. That removes the ordering
+dependency rather than trying to win the race.
+
+`rtc.ts` buffers at two more points for the same class of reason: an offer arriving
+before the local camera exists (answering early would negotiate a one-way
+connection), and ICE candidates arriving before the description they belong to
+(routine, not an error).
+
+---
+
 ## D24 — STUN only, no TURN
 
 **Status:** accepted limitation

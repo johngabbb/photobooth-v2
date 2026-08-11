@@ -22,6 +22,7 @@ import {
   type ConnectionState,
   type Presence,
   type RoomSettings,
+  type SessionMessage,
   type SessionRole,
   type Transport,
 } from "./types";
@@ -120,6 +121,16 @@ export function useSession(code: string): Session {
   const assemblerRef = useRef(new FrameAssembler());
   const pingsRef = useRef(new Map<string, number>());
   const rtcRef = useRef<PeerVideo | null>(null);
+  /**
+   * Signalling that arrived before this device had a peer connection to hand it to.
+   *
+   * Both sides create their `PeerVideo` when they observe the *other* side's camera
+   * go ready, so whose effect runs first is a race. If the host wins, its offer
+   * reaches a guest whose connection does not exist yet — and since the host never
+   * re-offers, the video link silently never forms. Buffering removes the ordering
+   * dependency entirely.
+   */
+  const pendingSignalsRef = useRef<SessionMessage[]>([]);
   const localStreamRef = useRef<MediaStream | null>(null);
 
   const transportKind = useMemo<Transport["kind"]>(
@@ -271,7 +282,9 @@ export function useSession(code: string): Session {
           msg.type === "rtc-answer" ||
           msg.type === "rtc-ice"
         ) {
-          void rtcRef.current?.handleSignal(msg);
+          const rtc = rtcRef.current;
+          if (rtc) void rtc.handleSignal(msg);
+          else pendingSignalsRef.current.push(msg);
         }
       },
     });
@@ -403,8 +416,14 @@ export function useSession(code: string): Session {
     const stream = localStreamRef.current;
     if (stream) void rtc.start(stream);
 
+    // Replay anything that arrived while we were still setting up.
+    const queued = pendingSignalsRef.current;
+    pendingSignalsRef.current = [];
+    for (const msg of queued) void rtc.handleSignal(msg);
+
     return () => {
       rtcRef.current = null;
+      pendingSignalsRef.current = [];
       rtc.stop();
     };
   }, [connection, peerReadyForVideo, localReady, peer?.peerId]);

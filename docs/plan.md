@@ -275,6 +275,12 @@ Supabase signalling: two video elements carrying genuinely different live stream
 peer video arriving on both devices, and synchronised capture still producing a full
 card while the video link is running.
 
+Real-device testing then found what desktop suites could not: on a phone the
+side-by-side stage collapsed to ~130px tall and the "Enable camera" button overflowed
+its box, on screen but untappable. Below `lg` the stage now shows your own half large
+with the other person inset (D26). A signalling race was fixed at the same time
+(D27).
+
 **Phase 5 — Polish**
 Filters (CSS filter on preview, replayed on the export canvas), frame colors and
 borders, captions, shareable card pages, retake-single-shot.

@@ -271,7 +271,10 @@ export function Room({ code }: { code: string }) {
       : null;
 
   return (
-    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_20rem]">
+    // On a phone the two rows must be given an explicit share. Left to auto sizing the
+    // controls' content wins and squeezes the stage to ~150px — unusable for framing a
+    // face. 3fr/2fr keeps the camera dominant and lets the controls scroll.
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-6 lg:px-6 lg:py-5">
       <div className="flex min-h-0 flex-col items-center justify-center gap-3">
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           {showCard ? (
