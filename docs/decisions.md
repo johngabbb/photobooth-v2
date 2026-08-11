@@ -173,6 +173,100 @@ the point of the seam is that both sides really satisfy it.
 
 ---
 
+## D22 — A queued capture always wins the stage
+
+**Status:** load-bearing, this shipped broken once
+
+The room shows the finished card when every slot is full. But "every slot is full" is
+still true during a **retake** — the old halves are there until new ones replace them.
+So the card kept the stage, the `<video>` element was never mounted, and
+`captureFrame` had nothing to read from: the shutter fired, captured nothing, and the
+shot silently never changed. From the outside it looked like the retake button did
+nothing.
+
+The fix is an explicit `pending` flag — a capture is queued and has not fired — which
+takes precedence over completeness when deciding what the stage shows. A retake now
+puts the camera and its countdown back on **both** devices, which is also the only
+way for either person to know they are about to be photographed again.
+
+The same flag now drives the scheduler loop, which previously ran a
+`requestAnimationFrame` for the entire review doing nothing.
+
+The general shape is worth remembering: *derived* state ("all slots full") is not the
+same as *intended* state ("we are reviewing"), and conflating them breaks exactly when
+a new action begins before the old data is replaced.
+
+---
+
+## D19 — Frames cross on the realtime channel, not object storage
+
+**Status:** revises D5
+
+D5 planned to hand frames over via Supabase Storage. Phase 3 changed course: frames
+are JPEG-encoded, chunked, and sent as broadcast messages on the channel that already
+carries settings and `captureAt`.
+
+Three reasons, in order of weight:
+
+1. **Storage needs provisioning that cannot be verified from here** — a bucket plus
+   RLS policies, created by hand in a dashboard. Anything the build depends on but
+   cannot check is a support burden and a silent-failure surface.
+2. **It rides the `Transport` interface**, so the whole feature works on the local
+   transport too. Synchronised capture and frame exchange were developed and tested
+   with two tabs before ever touching the network — and the local path stays testable
+   afterwards.
+3. **Nothing is persisted.** A frame exists in two browsers and in transit. There is
+   no bucket filling with other people's faces, no retention policy to write, and no
+   cleanup job. For a photobooth that is the better default, not a compromise.
+
+Chunking is not tuning — a JPEG of a camera frame exceeds a single realtime message,
+and slicing at a conservative 24 KB means never depending on a provider's exact
+ceiling. Frames are downscaled to a 1000px long edge first: the largest card half is
+547x750 at 300 DPI, so full sensor resolution would be several times the bytes for no
+visible gain.
+
+Revisit if frames ever need to outlive the session — a shareable `/card/[id]` link
+would genuinely need storage.
+
+---
+
+## D20 — Each device keeps its own half at full quality
+
+**Status:** decided, with a consequence worth knowing
+
+Both devices composite the same card, but not bit-identically. A device draws **its
+own** half from the raw capture canvas and the **peer's** from the JPEG it received,
+so the two copies differ by compression noise on opposite halves — measured at
+0.0008% signature drift across a full card.
+
+The alternative was round-tripping your own frame through the same encode/decode so
+both halves are treated identically and the files match exactly. Rejected: it
+degrades a perfectly good local frame to buy a symmetry nobody can see. At a 1000px
+long edge compressed into a 547px-wide slot, the artefacts are not visible.
+
+The consequence is only for tests: "both devices produce the same card" has to be
+asserted with a tolerance, never as equality.
+
+---
+
+## D21 — Shots are scheduled up front, not chained
+
+**Status:** decided
+
+Pressing start broadcasts **all** `capture` messages at once, each carrying its own
+absolute instant. It does not send one, wait for it to fire, then send the next.
+
+A chain would make every shot depend on the previous message arriving on time, so one
+slow delivery would shift everything after it — and shift it differently on each
+device, which is precisely the failure this phase exists to prevent. With absolute
+instants, a delayed message gives the receiver less warning but does not move the
+shutter.
+
+It also makes retake trivial: re-broadcasting one `capture` for an existing index
+overwrites that slot on both devices, with no notion of "current shot" to rewind.
+
+---
+
 ## D18 — The Supabase client is shared; channels are not
 
 **Status:** load-bearing

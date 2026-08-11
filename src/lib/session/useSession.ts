@@ -2,6 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { THEMES } from "../layouts";
+import {
+  HOST_CLOCK,
+  PING_COUNT,
+  PING_INTERVAL_MS,
+  UNSYNCED,
+  refine,
+  sampleFrom,
+  toLocalTime,
+  type ClockSync,
+} from "./clock";
+import { FrameAssembler, chunk, decodeFrame, encodeFrame } from "./frames";
 import { LocalTransport } from "./localTransport";
 import { SupabaseTransport, supabaseConfig } from "./supabaseTransport";
 import {
@@ -38,7 +49,32 @@ export interface Session {
   /** No-op for the guest: settings are host-authoritative. */
   updateSettings: (patch: Partial<RoomSettings>) => void;
   setCameraReady: (ready: boolean) => void;
+
+  /** Offset between this device's clock and the host's. */
+  clock: ClockSync;
+  /**
+   * Fire a synchronised shot. Host only — it broadcasts the instant and schedules
+   * its own capture from the same value.
+   */
+  scheduleCapture: (shot: number, delayMs: number, total: number) => void;
+  /** Called on both devices at the agreed instant, with the shot index. */
+  onCapture: (handler: CaptureHandler | null) => void;
+  /** Publish this device's frame for a shot; chunks it to the peer. */
+  sendFrame: (shot: number, canvas: HTMLCanvasElement) => Promise<void>;
+  /** Fires when the peer's frame for a shot has fully arrived and decoded. */
+  onPeerFrame: (handler: PeerFrameHandler | null) => void;
+  /** Host: tell both devices to discard and start over. */
+  reset: () => void;
+  onReset: (handler: (() => void) | null) => void;
 }
+
+/** `at` is this device's local clock, already offset-corrected. */
+export type CaptureHandler = (shot: number, at: number, total: number) => void;
+export type PeerFrameHandler = (
+  shot: number,
+  role: SessionRole,
+  image: HTMLImageElement,
+) => void;
 
 const DEFAULT_SETTINGS: RoomSettings = { count: 4, themeId: THEMES[0].id };
 
@@ -54,12 +90,25 @@ export function useSession(code: string): Session {
   const [peers, setPeers] = useState<Presence[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("idle");
   const [settings, setSettings] = useState<RoomSettings>(DEFAULT_SETTINGS);
+  const [clock, setClock] = useState<ClockSync>(() =>
+    hasHostClaim(code) ? HOST_CLOCK : UNSYNCED,
+  );
 
   const transportRef = useRef<Transport | null>(null);
   const roleRef = useRef<SessionRole>(role);
   const settingsRef = useRef<RoomSettings>(DEFAULT_SETTINGS);
   // Last roster we published, so repeated identical syncs do not re-render.
   const rosterKeyRef = useRef<string>("");
+
+  // Callbacks live in refs, not state: they are set by the room component after
+  // mount and must be readable from the message handler without re-joining the
+  // channel every time the component re-renders.
+  const clockRef = useRef<ClockSync>(hasHostClaim(code) ? HOST_CLOCK : UNSYNCED);
+  const captureHandlerRef = useRef<CaptureHandler | null>(null);
+  const peerFrameHandlerRef = useRef<PeerFrameHandler | null>(null);
+  const resetHandlerRef = useRef<(() => void) | null>(null);
+  const assemblerRef = useRef(new FrameAssembler());
+  const pingsRef = useRef(new Map<string, number>());
 
   const transportKind = useMemo<Transport["kind"]>(
     () => (supabaseConfig() ? "supabase" : "local"),
@@ -79,6 +128,7 @@ export function useSession(code: string): Session {
       role: roleRef.current,
       peerId,
       cameraReady: false,
+      clockSynced: roleRef.current === HOST_ROLE,
       joinedAt: Date.now(),
     };
 
@@ -94,7 +144,7 @@ export function useSession(code: string): Session {
         // Supabase re-syncs presence liberally and the local transport gossips on a
         // heartbeat. Both can deliver an unchanged roster many times a second.
         const key = roster
-          .map((p) => `${p.peerId}:${p.role}:${p.cameraReady}`)
+          .map((p) => `${p.peerId}:${p.role}:${p.cameraReady}:${p.clockSynced}`)
           .sort()
           .join("|");
         if (key !== rosterKeyRef.current) {
@@ -137,6 +187,70 @@ export function useSession(code: string): Session {
             from: HOST_ROLE,
             settings: settingsRef.current,
           });
+          return;
+        }
+
+        // Clock sync. The host simply echoes with its own reading; all the
+        // arithmetic happens on the guest.
+        if (msg.type === "ping" && roleRef.current === HOST_ROLE) {
+          void transport.send({
+            type: "pong",
+            from: HOST_ROLE,
+            id: msg.id,
+            t0: msg.t0,
+            t1: Date.now(),
+          });
+          return;
+        }
+
+        if (msg.type === "pong" && roleRef.current !== HOST_ROLE) {
+          const sent = pingsRef.current.get(msg.id);
+          if (sent === undefined) return;
+          pingsRef.current.delete(msg.id);
+
+          const current = clockRef.current;
+
+          const next = refine(clockRef.current, sampleFrom(msg.t0, msg.t1, Date.now()));
+          clockRef.current = next;
+          setClock(next);
+          if (!current.synced && next.synced) {
+            void transport.setPresence({ clockSynced: true });
+          }
+          return;
+        }
+
+        // The shutter instant, expressed on the host's clock. Convert to this
+        // device's clock before handing it on — for the host that is a no-op.
+        if (msg.type === "capture") {
+          captureHandlerRef.current?.(
+            msg.shot,
+            toLocalTime(msg.at, clockRef.current),
+            msg.total,
+          );
+          return;
+        }
+
+        if (msg.type === "frame") {
+          const complete = assemblerRef.current.add(
+            msg.shot,
+            msg.from,
+            msg.seq,
+            msg.total,
+            msg.data,
+          );
+          if (complete) {
+            void decodeFrame(complete)
+              .then((img) => peerFrameHandlerRef.current?.(msg.shot, msg.from, img))
+              .catch(() => {
+                /* A corrupt frame leaves that half empty; retake covers it. */
+              });
+          }
+          return;
+        }
+
+        if (msg.type === "reset") {
+          assemblerRef.current.clear();
+          resetHandlerRef.current?.();
         }
       },
     });
@@ -147,6 +261,93 @@ export function useSession(code: string): Session {
       transportRef.current = null;
     };
   }, [code, peerId]);
+
+  // Probe the host's clock once both are present. Re-runs if the host reconnects,
+  // because a new peer means a new clock to measure against.
+  const hostPresent = peers.some((p) => p.role === HOST_ROLE && p.peerId !== peerId);
+  useEffect(() => {
+    if (roleRef.current === HOST_ROLE) return;
+    if (connection !== "connected" || !hostPresent) return;
+
+    let cancelled = false;
+    let sent = 0;
+
+    const timer = window.setInterval(() => {
+      if (cancelled || sent >= PING_COUNT) {
+        window.clearInterval(timer);
+        return;
+      }
+      sent += 1;
+
+      const id = crypto.randomUUID();
+      const t0 = Date.now();
+      pingsRef.current.set(id, t0);
+      void transportRef.current?.send({ type: "ping", from: GUEST_ROLE, id, t0 });
+    }, PING_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [connection, hostPresent, peerId]);
+
+  const scheduleCapture = useCallback(
+    (shot: number, delayMs: number, total: number) => {
+      if (roleRef.current !== HOST_ROLE) return;
+
+      // Host clock is the reference, so "now + delay" needs no correction here.
+      const at = Date.now() + delayMs;
+      void transportRef.current?.send({
+        type: "capture",
+        from: HOST_ROLE,
+        shot,
+        at,
+        total,
+      });
+      // Drive our own capture from the identical value rather than a second
+      // `Date.now()`, so host and guest are working from one number.
+      captureHandlerRef.current?.(shot, at, total);
+    },
+    [],
+  );
+
+  const onCapture = useCallback((handler: CaptureHandler | null) => {
+    captureHandlerRef.current = handler;
+  }, []);
+
+  const onPeerFrame = useCallback((handler: PeerFrameHandler | null) => {
+    peerFrameHandlerRef.current = handler;
+  }, []);
+
+  const onReset = useCallback((handler: (() => void) | null) => {
+    resetHandlerRef.current = handler;
+  }, []);
+
+  const sendFrame = useCallback(async (shot: number, canvas: HTMLCanvasElement) => {
+    const transport = transportRef.current;
+    if (!transport) return;
+
+    const encoded = await encodeFrame(canvas);
+    const parts = chunk(encoded);
+
+    for (let seq = 0; seq < parts.length; seq++) {
+      await transport.send({
+        type: "frame",
+        from: roleRef.current,
+        shot,
+        seq,
+        total: parts.length,
+        data: parts[seq],
+      });
+    }
+  }, []);
+
+  const reset = useCallback(() => {
+    if (roleRef.current !== HOST_ROLE) return;
+    assemblerRef.current.clear();
+    void transportRef.current?.send({ type: "reset", from: HOST_ROLE });
+    resetHandlerRef.current?.();
+  }, []);
 
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
     if (roleRef.current !== HOST_ROLE) return;
@@ -181,5 +382,12 @@ export function useSession(code: string): Session {
     settings,
     updateSettings,
     setCameraReady,
+    clock,
+    scheduleCapture,
+    onCapture,
+    sendFrame,
+    onPeerFrame,
+    reset,
+    onReset,
   };
 }

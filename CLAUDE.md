@@ -59,7 +59,7 @@ src/app/
   studio/         /studio — layout + theme harness on synthetic photos (Phase 0)
 src/components/   React components — all client-side
   Booth.tsx       capture state machine and scheduler
-  Lobby.tsx       the room: presence, code/QR, host-owned settings
+  Room.tsx        the two-person booth: presence, synchronised capture, shared card
   CameraStage.tsx live preview, countdown, flash
   Controls.tsx    shared control primitives — use these, don't re-roll them
 src/lib/
@@ -71,6 +71,8 @@ src/lib/
   capture.ts      video frame -> canvas
   download.ts     render at 300 DPI and save
   session/        room codes, transport interface, presence, useSession
+    clock.ts      offset estimation between the two devices
+    frames.ts     JPEG encode, chunking, reassembly
   placeholders.ts synthetic photos for building without a camera
 public/brand/     logo assets; src/app/icon.png is the favicon
 docs/             plan, architecture, brand, setup, decisions

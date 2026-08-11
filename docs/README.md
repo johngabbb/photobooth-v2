@@ -13,11 +13,12 @@ Project-level conventions and traps for contributors (human or agent) live in
 
 ## Where things stand
 
-**Phases 0 through 2.5 are complete.**
+**Phases 0 through 3 are complete — the product works.**
 
-- `/` starts or joins a session. `/room/[code]` is the two-person room: a code and QR
-  to share, a live roster showing who is present and whose camera is on, and settings
-  the host owns and the guest receives.
+- `/` starts or joins a session. `/room/[code]` is the two-person booth: share a code
+  or QR, both cameras go live, and **one countdown fires both shutters at the same
+  instant**. Every frame ends up holding both of you, and each device composites the
+  same card locally so you both download your own copy.
 - `/solo` is the full single-device booth — countdown, captures, 300 DPI PNG, retake.
 - `/studio` is the layout and theme harness on synthetic photos.
 
@@ -33,6 +34,6 @@ the room says so in a banner. See [setup.md](./setup.md).
 Preview, and a room verified working between two real devices. See
 [setup.md](./setup.md) for the deploy loop and its two silent-failure traps.
 
-**Next up: Phase 3** — synchronised capture. Clock-offset estimation, a broadcast
-`captureAt`, both shutters firing together, frame exchange, and the dual composite.
-This is the milestone where the product actually arrives.
+**Next up: Phase 4** — live peer preview over WebRTC, so you can see each other while
+posing instead of composing blind. The signalling channel already exists; the product
+works without it, which is why it comes after Phase 3.

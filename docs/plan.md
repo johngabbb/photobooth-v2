@@ -239,10 +239,26 @@ HTTPS comes free, which is the whole point.
 
 ---
 
-**Phase 3 — Synchronized capture**
-Clock offset estimation, scheduled `captureAt` broadcast, simultaneous shutter, frame
-upload and exchange, dual composite. **This is the milestone that delivers the actual
-product.**
+**Phase 3 — Synchronized capture** ✅ *done*
+Clock offset estimation, `captureAt` broadcast, simultaneous shutter on both devices,
+frame exchange, and a dual composite that leaves each person holding the same card.
+**The product now exists.**
+
+How it works: the host never says "shoot now". It broadcasts an *instant* on its own
+clock; the guest converts using an offset measured by ping/pong through the channel
+(lowest-RTT sample wins — see `clock.ts`) and schedules against its own clock. A late
+message gives less warning but does not move the shutter.
+
+Frames ride the same channel as chunked JPEGs rather than going through object
+storage (D19), which means the whole feature works on the local transport and nothing
+is ever persisted. All shots are scheduled up front rather than chained (D21), which
+also makes retake a one-message operation.
+
+Verified both ways: over the local transport with two tabs, and over **real Supabase
+with the two peers in isolated browser contexts** — no shared storage, no
+`BroadcastChannel`, so only the network can connect them. 175 ms round trip, both
+devices reaching a complete card, both compositing the same result within compression
+noise (D20), and either able to download its own copy.
 
 **Phase 4 — Live peer preview**
 WebRTC video so each person can see their partner while posing, using the existing
