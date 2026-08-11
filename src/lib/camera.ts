@@ -30,6 +30,8 @@ export type CameraStatus =
 
 export interface Camera {
   status: CameraStatus;
+  /** The live stream, for handing to a peer connection. */
+  stream: MediaStream | null;
   /** Underlying DOMException message, for the details line. */
   detail: string | null;
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -95,12 +97,14 @@ function classify(err: unknown): { status: CameraStatus; detail: string } {
 export function useCamera(): Camera {
   const [status, setStatus] = useState<CameraStatus>("idle");
   const [detail, setDetail] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const stop = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    setStream(null);
     if (videoRef.current) videoRef.current.srcObject = null;
     setStatus("idle");
   }, []);
@@ -132,6 +136,7 @@ export function useCamera(): Camera {
 
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = stream;
+      setStream(stream);
       setStatus("ready");
     } catch (err) {
       const { status: s, detail: d } = classify(err);
@@ -184,5 +189,5 @@ export function useCamera(): Camera {
     };
   }, []);
 
-  return { status, detail, videoRef, start, stop };
+  return { status, stream, detail, videoRef, start, stop };
 }

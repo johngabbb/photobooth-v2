@@ -173,6 +173,72 @@ the point of the seam is that both sides really satisfy it.
 
 ---
 
+## D23 — The host always offers; WebRTC is additive
+
+**Status:** decided in Phase 4
+
+Peer video signals over the realtime channel that already exists — SDP and ICE are
+just messages, and a broadcast channel is exactly the thing they need.
+
+**The host is always the offerer**, decided by role rather than by whoever is ready
+first. Two peers offering at once is "glare", the classic WebRTC failure, and
+recovering from it needs rollback negotiation. With a fixed offerer the situation
+cannot arise, and the cost is nothing: there is already a host.
+
+**Nothing depends on it.** If the connection never establishes, the countdown still
+fires, frames still cross, and the card is still produced — the peer half shows a
+placeholder saying so. That is the point of layering it after Phase 3 rather than
+building both together.
+
+Two ordering rules that are easy to get wrong and were handled explicitly:
+
+- **Offer only once the peer publishes `cameraReady`.** Offering earlier negotiates a
+  one-way connection, and nothing renegotiates it afterwards. An offer arriving
+  before the local camera exists is buffered rather than answered.
+- **ICE candidates routinely arrive before the description they belong to.** They are
+  queued and drained after `setRemoteDescription`. This is normal operation, not an
+  error path.
+
+---
+
+## D24 — STUN only, no TURN
+
+**Status:** accepted limitation
+
+`rtc.ts` configures public STUN servers and no TURN. STUN is enough to discover a
+public address, which covers most home networks.
+
+**Symmetric NATs and restrictive corporate networks will fail to connect.** Fixing
+that requires a TURN server relaying the actual media, which costs real money and is
+hard to justify for a feature that only makes posing easier — especially when capture
+works without it.
+
+The failure is handled rather than hidden: the peer half shows "Could not open a
+video link — you can still take photos together", which is true.
+
+Revisit if two-people-on-mobile-networks turns out to be the common case; that is
+exactly the scenario STUN-only handles worst.
+
+---
+
+## D25 — The stage previews a whole slot, not your half
+
+**Status:** decided in Phase 4
+
+Once peer video exists, the natural stage is the **entire card slot**: both halves
+side by side, split where the card splits, each person filling their own side. Same
+framing, same cover-crop, same mirroring, same seam.
+
+The preview stopped being "your camera" and became a live rehearsal of what the card
+will hold — which is the actual thing either person wants to know while posing.
+
+Both videos are mirrored, including the remote one. It looks wrong in isolation
+(you would not mirror a video call) but it is right here, because `renderCard` applies
+one `mirror` flag to both halves. Un-mirroring the peer would make the preview
+disagree with the card.
+
+---
+
 ## D22 — A queued capture always wins the stage
 
 **Status:** load-bearing, this shipped broken once

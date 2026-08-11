@@ -260,11 +260,20 @@ with the two peers in isolated browser contexts** — no shared storage, no
 devices reaching a complete card, both compositing the same result within compression
 noise (D20), and either able to download its own copy.
 
-**Phase 4 — Live peer preview**
-WebRTC video so each person can see their partner while posing, using the existing
-realtime channel for signaling. Genuinely improves the experience — you can't pose
-together while blind to the other person — but the product works without it, so it
-comes after Phase 3 rather than blocking it.
+**Phase 4 — Live peer preview** ✅ *done*
+WebRTC peer video signalled over the existing realtime channel, and a stage that now
+shows **the whole card slot** — both people side by side, split where the card splits
+(D25). Posing together instead of blind.
+
+The host always offers, which removes glare entirely (D23). Nothing depends on the
+connection: if it fails, the peer half says so and capture carries on unaffected.
+STUN only, no TURN — restrictive networks will not connect, and that is an accepted
+limit rather than a bug (D24).
+
+Verified in both configurations, including isolated browser contexts over real
+Supabase signalling: two video elements carrying genuinely different live streams,
+peer video arriving on both devices, and synchronised capture still producing a full
+card while the video link is running.
 
 **Phase 5 — Polish**
 Filters (CSS filter on preview, replayed on the export canvas), frame colors and

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CameraStage } from "@/components/CameraStage";
+import { PairStage } from "@/components/PairStage";
 import { CardCanvas } from "@/components/CardCanvas";
 import { QrCode } from "@/components/QrCode";
 import {
@@ -91,15 +91,23 @@ export function Room({ code }: { code: string }) {
   const layout = useMemo(() => layoutFor("duo", count), [count]);
   const theme = useMemo(() => findTheme(settings.themeId), [settings.themeId]);
 
-  const half = useMemo(() => {
-    const slot = slotRects(layout)[0];
-    return { w: (slot.w - layout.splitGap) / 2, h: slot.h };
+  // The stage shows the whole slot now — both halves side by side — so the preview
+  // is a live rehearsal of what the card will hold.
+  const slot = useMemo(() => {
+    const r = slotRects(layout)[0];
+    return { w: r.w, h: r.h };
   }, [layout]);
 
   const cameraReady = camera.status === "ready";
   useEffect(() => {
     setCameraReady(cameraReady);
   }, [cameraReady, setCameraReady]);
+
+  // Hand the local camera to the peer connection once it exists.
+  const { publishLocalStream } = session;
+  useEffect(() => {
+    publishLocalStream(camera.stream);
+  }, [camera.stream, publishLocalStream]);
 
   // Resize the shot array when the host changes the photo count.
   useEffect(() => {
@@ -272,9 +280,14 @@ export function Room({ code }: { code: string }) {
               className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
             />
           ) : (
-            <CameraStage
+            <PairStage
               camera={camera}
-              slot={half}
+              role={role}
+              slot={slot}
+              splitGap={layout.splitGap}
+              peerStream={session.peerStream}
+              peerVideo={session.peerVideo}
+              peerPresent={Boolean(peer)}
               countdown={countdown}
               flash={flash}
               onStart={camera.start}
@@ -286,7 +299,7 @@ export function Room({ code }: { code: string }) {
             ? `${layout.physical} · ${layout.canvas.w}×${layout.canvas.h}px · 300 DPI`
             : started
               ? `Photo ${Math.min(filled + 1, count)} of ${count}`
-              : `You are ${ROLE_LABEL[role]} · your half of a ${layout.physical} card`}
+              : `You are ${ROLE_LABEL[role]} · live preview of one ${layout.physical} slot`}
         </p>
       </div>
 

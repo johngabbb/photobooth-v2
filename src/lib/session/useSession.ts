@@ -13,6 +13,7 @@ import {
   type ClockSync,
 } from "./clock";
 import { FrameAssembler, chunk, decodeFrame, encodeFrame } from "./frames";
+import { PeerVideo, type PeerVideoState } from "./rtc";
 import { LocalTransport } from "./localTransport";
 import { SupabaseTransport, supabaseConfig } from "./supabaseTransport";
 import {
@@ -66,6 +67,12 @@ export interface Session {
   /** Host: tell both devices to discard and start over. */
   reset: () => void;
   onReset: (handler: (() => void) | null) => void;
+
+  /** The other person's camera, once the peer connection is up. */
+  peerStream: MediaStream | null;
+  peerVideo: PeerVideoState;
+  /** Hand the local camera to the peer connection. Safe to call repeatedly. */
+  publishLocalStream: (stream: MediaStream | null) => void;
 }
 
 /** `at` is this device's local clock, already offset-corrected. */
@@ -93,6 +100,9 @@ export function useSession(code: string): Session {
   const [clock, setClock] = useState<ClockSync>(() =>
     hasHostClaim(code) ? HOST_CLOCK : UNSYNCED,
   );
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [peerStream, setPeerStream] = useState<MediaStream | null>(null);
+  const [peerVideo, setPeerVideo] = useState<PeerVideoState>("idle");
 
   const transportRef = useRef<Transport | null>(null);
   const roleRef = useRef<SessionRole>(role);
@@ -109,6 +119,8 @@ export function useSession(code: string): Session {
   const resetHandlerRef = useRef<(() => void) | null>(null);
   const assemblerRef = useRef(new FrameAssembler());
   const pingsRef = useRef(new Map<string, number>());
+  const rtcRef = useRef<PeerVideo | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
   const transportKind = useMemo<Transport["kind"]>(
     () => (supabaseConfig() ? "supabase" : "local"),
@@ -251,6 +263,15 @@ export function useSession(code: string): Session {
         if (msg.type === "reset") {
           assemblerRef.current.clear();
           resetHandlerRef.current?.();
+          return;
+        }
+
+        if (
+          msg.type === "rtc-offer" ||
+          msg.type === "rtc-answer" ||
+          msg.type === "rtc-ice"
+        ) {
+          void rtcRef.current?.handleSignal(msg);
         }
       },
     });
@@ -349,6 +370,46 @@ export function useSession(code: string): Session {
     resetHandlerRef.current?.();
   }, []);
 
+  const peer = useMemo(
+    () => peers.find((p) => p.peerId !== peerId) ?? null,
+    [peers, peerId],
+  );
+
+  const publishLocalStream = useCallback((stream: MediaStream | null) => {
+    localStreamRef.current = stream;
+    setLocalStream(stream);
+  }, []);
+
+  // Bring the peer connection up once both people are present with cameras on.
+  //
+  // Gating on the peer's *published* camera state matters: offering before the other
+  // side can add tracks negotiates a one-way connection, and nothing renegotiates it
+  // afterwards.
+  const peerReadyForVideo = Boolean(peer?.cameraReady);
+  const localReady = Boolean(localStream);
+  useEffect(() => {
+    if (connection !== "connected") return;
+    if (!peerReadyForVideo || !localReady) return;
+
+    const rtc = new PeerVideo({
+      isHost: roleRef.current === HOST_ROLE,
+      role: roleRef.current,
+      send: (msg) => void transportRef.current?.send(msg),
+      onStream: setPeerStream,
+      onState: setPeerVideo,
+    });
+    rtcRef.current = rtc;
+
+    const stream = localStreamRef.current;
+    if (stream) void rtc.start(stream);
+
+    return () => {
+      rtcRef.current = null;
+      rtc.stop();
+    };
+  }, [connection, peerReadyForVideo, localReady, peer?.peerId]);
+
+
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
     if (roleRef.current !== HOST_ROLE) return;
 
@@ -367,11 +428,6 @@ export function useSession(code: string): Session {
     void transportRef.current?.setPresence({ cameraReady: ready });
   }, []);
 
-  const peer = useMemo(
-    () => peers.find((p) => p.peerId !== peerId) ?? null,
-    [peers, peerId],
-  );
-
   return {
     role,
     isHost: role === HOST_ROLE,
@@ -389,5 +445,8 @@ export function useSession(code: string): Session {
     onPeerFrame,
     reset,
     onReset,
+    peerStream,
+    peerVideo,
+    publishLocalStream,
   };
 }

@@ -60,6 +60,7 @@ src/app/
 src/components/   React components — all client-side
   Booth.tsx       capture state machine and scheduler
   Room.tsx        the two-person booth: presence, synchronised capture, shared card
+  PairStage.tsx   both halves side by side — a live rehearsal of one card slot
   CameraStage.tsx live preview, countdown, flash
   Controls.tsx    shared control primitives — use these, don't re-roll them
 src/lib/
@@ -73,6 +74,7 @@ src/lib/
   session/        room codes, transport interface, presence, useSession
     clock.ts      offset estimation between the two devices
     frames.ts     JPEG encode, chunking, reassembly
+    rtc.ts        peer video: signalling, offer/answer, ICE
   placeholders.ts synthetic photos for building without a camera
 public/brand/     logo assets; src/app/icon.png is the favicon
 docs/             plan, architecture, brand, setup, decisions
