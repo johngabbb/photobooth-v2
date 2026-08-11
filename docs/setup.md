@@ -104,6 +104,27 @@ that code becomes untestable the moment the project is provisioned.
 > received host settings by broadcast in ~130-150 ms. A late joiner picked up current
 > settings, and peers dropped from the roster on leaving.
 
+## Deploying to Vercel
+
+A stock Next.js build — no custom server, no build configuration.
+
+1. Import the GitHub repo at [vercel.com/new](https://vercel.com/new).
+2. **Settings → Environment Variables**: add `NEXT_PUBLIC_SUPABASE_URL` and
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for **Production and Preview**. `.env.local`
+   is git-ignored, so nothing carries over from your machine — miss this and rooms
+   silently degrade to same-browser mode on the deployed site.
+3. Do **not** set `NEXT_PUBLIC_USE_LOCAL_TRANSPORT` in Vercel. It would pin every room
+   to the local transport, which is the one thing a deployment exists to avoid.
+
+HTTPS is automatic, which is what makes the camera work on phones. Preview
+deployments get their own URLs, so a branch can be tested on two devices without
+touching production.
+
+Sanity check after deploying: open a room and confirm the yellow "Same-browser mode"
+banner is absent. If it is there, the environment variables did not reach the build —
+re-deploy after adding them, since they are inlined at build time rather than read at
+runtime.
+
 ## Cross-device testing
 
 `getUserMedia` requires a secure context. `localhost` counts, but your phone cannot

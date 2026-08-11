@@ -203,6 +203,41 @@ real cross-device rooms, and `BroadcastChannel` for same-browser development. Bo
 are verified — the Supabase path against a live project, using two isolated browser
 contexts that can only communicate over the network.
 
+**Phase 2.5 — Deploy to Vercel** ← *do this before Phase 3, not after*
+Push to Vercel, set the two Supabase variables in the project settings, confirm a room
+works between two real devices on the deployed URL.
+
+Deployment sits here rather than at the end because it is **test infrastructure for
+Phase 3, not a victory lap**. Phase 3 is two devices firing shutters together, and
+that cannot be meaningfully tested without two devices — which needs HTTPS, because
+`getUserMedia` does not exist over plain http and `localhost` cannot reach a phone.
+Building synchronised capture before there is a URL to try it on means writing the
+hardest part of the app blind.
+
+A tunnel (`ngrok`, `cloudflared`) is the alternative and works fine for a quick trial,
+but it is a worse fit for a phase of work: the URL changes every restart, and free
+tunnels are slow enough to muddy the latency measurements that Phase 3's clock
+correction depends on.
+
+What it involves — the app is a stock Next.js build with no custom server, so there is
+no configuration to speak of:
+
+1. Import the GitHub repo at [vercel.com/new](https://vercel.com/new). Framework
+   detection handles the rest; no build settings to change.
+2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` under
+   **Settings → Environment Variables**, for Production *and* Preview. `.env.local` is
+   git-ignored, so these do not travel with the repo — this step is easy to forget and
+   presents as "rooms silently only work between tabs".
+3. **Do not set `NEXT_PUBLIC_USE_LOCAL_TRANSPORT`.** In production it would leave every
+   room stuck in same-browser mode.
+4. Open the deployed URL on two phones and confirm presence, camera state, and
+   settings sync. Preview deployments get their own URLs, so branches can be tested
+   without touching production.
+
+HTTPS comes free, which is the whole point.
+
+---
+
 **Phase 3 — Synchronized capture**
 Clock offset estimation, scheduled `captureAt` broadcast, simultaneous shutter, frame
 upload and exchange, dual composite. **This is the milestone that delivers the actual

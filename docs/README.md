@@ -29,6 +29,9 @@ npm run dev
 is `BroadcastChannel`, which reaches other tabs in the same browser and nothing else;
 the room says so in a banner. See [setup.md](./setup.md).
 
-**Next up: Phase 3** — synchronised capture. Clock-offset estimation, a broadcast
+**Next up: Phase 2.5, deploy to Vercel** — not a victory lap but test infrastructure:
+Phase 3 needs two real devices, which needs HTTPS. See [setup.md](./setup.md).
+
+**Then Phase 3** — synchronised capture. Clock-offset estimation, a broadcast
 `captureAt`, both shutters firing together, frame exchange, and the dual composite.
 This is the milestone where the product actually arrives.

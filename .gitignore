@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template, which documents the required variables and must be
+# committed. Negations only work after the pattern that ignored the file.
+!.env.local.example
 
 # vercel
 .vercel
