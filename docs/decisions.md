@@ -173,6 +173,119 @@ the point of the seam is that both sides really satisfy it.
 
 ---
 
+## D23 — The host always offers; WebRTC is additive
+
+**Status:** decided in Phase 4
+
+Peer video signals over the realtime channel that already exists — SDP and ICE are
+just messages, and a broadcast channel is exactly the thing they need.
+
+**The host is always the offerer**, decided by role rather than by whoever is ready
+first. Two peers offering at once is "glare", the classic WebRTC failure, and
+recovering from it needs rollback negotiation. With a fixed offerer the situation
+cannot arise, and the cost is nothing: there is already a host.
+
+**Nothing depends on it.** If the connection never establishes, the countdown still
+fires, frames still cross, and the card is still produced — the peer half shows a
+placeholder saying so. That is the point of layering it after Phase 3 rather than
+building both together.
+
+Two ordering rules that are easy to get wrong and were handled explicitly:
+
+- **Offer only once the peer publishes `cameraReady`.** Offering earlier negotiates a
+  one-way connection, and nothing renegotiates it afterwards. An offer arriving
+  before the local camera exists is buffered rather than answered.
+- **ICE candidates routinely arrive before the description they belong to.** They are
+  queued and drained after `setRemoteDescription`. This is normal operation, not an
+  error path.
+
+---
+
+## D26 — The stage reshapes on a phone
+
+**Status:** decided after real-device testing
+
+Below `lg` the stage shows **your own half filling the frame, with the other person
+as an inset**, rather than the two halves side by side.
+
+Side by side is right on a laptop and wrong on a phone, for a reason that is
+arithmetic rather than taste: a 4-photo slot is 1104x363, a **3:1** ratio. In portrait
+the fitted box is width-limited, so it collapses to roughly 130px tall — too small to
+frame a face, and too small to hold the "Enable camera" prompt, whose button
+overflowed the box and was clipped by `overflow-hidden`. The button was on screen and
+untappable.
+
+Two supporting fixes came out of the same report:
+
+- **Overlays scroll** (`overflow-y-auto`) instead of pushing content out through a
+  clipped edge. A box whose height is dictated by a card aspect ratio can always end
+  up shorter than its own contents.
+- **The mobile grid allocates rows explicitly** (`grid-rows-[3fr_2fr]`). Left to auto
+  sizing, the controls' content won and squeezed the stage to ~150px.
+
+Found by running the room on an actual phone. The desktop suites were all green
+throughout — nothing in them constrains how a 3:1 box behaves in portrait.
+
+---
+
+## D27 — Signalling is buffered until the peer connection exists
+
+**Status:** load-bearing
+
+Both devices construct their `PeerVideo` when they observe the *other* side publish
+`cameraReady`, so which effect runs first is a race. If the host wins, its offer
+arrives at a guest that has no connection to hand it to — and since the host never
+re-offers, the video link silently never forms.
+
+`useSession` therefore queues any `rtc-*` message that arrives with no `PeerVideo`
+present and replays the queue when one is created. That removes the ordering
+dependency rather than trying to win the race.
+
+`rtc.ts` buffers at two more points for the same class of reason: an offer arriving
+before the local camera exists (answering early would negotiate a one-way
+connection), and ICE candidates arriving before the description they belong to
+(routine, not an error).
+
+---
+
+## D24 — STUN only, no TURN
+
+**Status:** accepted limitation
+
+`rtc.ts` configures public STUN servers and no TURN. STUN is enough to discover a
+public address, which covers most home networks.
+
+**Symmetric NATs and restrictive corporate networks will fail to connect.** Fixing
+that requires a TURN server relaying the actual media, which costs real money and is
+hard to justify for a feature that only makes posing easier — especially when capture
+works without it.
+
+The failure is handled rather than hidden: the peer half shows "Could not open a
+video link — you can still take photos together", which is true.
+
+Revisit if two-people-on-mobile-networks turns out to be the common case; that is
+exactly the scenario STUN-only handles worst.
+
+---
+
+## D25 — The stage previews a whole slot, not your half
+
+**Status:** decided in Phase 4
+
+Once peer video exists, the natural stage is the **entire card slot**: both halves
+side by side, split where the card splits, each person filling their own side. Same
+framing, same cover-crop, same mirroring, same seam.
+
+The preview stopped being "your camera" and became a live rehearsal of what the card
+will hold — which is the actual thing either person wants to know while posing.
+
+Both videos are mirrored, including the remote one. It looks wrong in isolation
+(you would not mirror a video call) but it is right here, because `renderCard` applies
+one `mirror` flag to both halves. Un-mirroring the peer would make the preview
+disagree with the card.
+
+---
+
 ## D22 — A queued capture always wins the stage
 
 **Status:** load-bearing, this shipped broken once

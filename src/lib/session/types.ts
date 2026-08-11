@@ -71,7 +71,15 @@ export type SessionMessage =
       data: string;
     }
   /** Host tells everyone to discard shots and return to the lobby. */
-  | { type: "reset"; from: SessionRole };
+  | { type: "reset"; from: SessionRole }
+  /**
+   * WebRTC signalling for the live peer preview. SDP and ICE have to reach the other
+   * device somehow before a peer connection can exist, and a broadcast channel is
+   * exactly that. The host always offers — see rtc.ts.
+   */
+  | { type: "rtc-offer"; from: SessionRole; sdp: string }
+  | { type: "rtc-answer"; from: SessionRole; sdp: string }
+  | { type: "rtc-ice"; from: SessionRole; candidate: RTCIceCandidateInit };
 
 export type ConnectionState =
   | "idle"
