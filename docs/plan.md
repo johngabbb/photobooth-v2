@@ -203,11 +203,12 @@ real cross-device rooms, and `BroadcastChannel` for same-browser development. Bo
 are verified — the Supabase path against a live project, using two isolated browser
 contexts that can only communicate over the network.
 
-**Phase 2.5 — Deploy to Vercel** ← *do this before Phase 3, not after*
-Push to Vercel, set the two Supabase variables in the project settings, confirm a room
-works between two real devices on the deployed URL.
+**Phase 2.5 — Deploy to Vercel** ✅ *done*
+Live on Vercel from the GitHub `main` branch, Supabase variables set for Production
+and Preview, and **a room confirmed working between two real devices** on the
+deployed URL. That last part is the acceptance criterion — the rest is just a build.
 
-Deployment sits here rather than at the end because it is **test infrastructure for
+Deployment sat here rather than at the end because it is **test infrastructure for
 Phase 3, not a victory lap**. Phase 3 is two devices firing shutters together, and
 that cannot be meaningfully tested without two devices — which needs HTTPS, because
 `getUserMedia` does not exist over plain http and `localhost` cannot reach a phone.
