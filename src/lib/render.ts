@@ -1,3 +1,4 @@
+import { CARD_FONT } from "./brand";
 import { ROLES } from "./types";
 import type { Layout, Rect, RenderInput, Role, Shot, SplitMode } from "./types";
 
@@ -144,25 +145,180 @@ function rolesFor(layout: Layout): Role[] {
   return layout.split === "none" ? [ROLES[0]] : [...ROLES];
 }
 
+/**
+ * Draw `src` fully inside `dest` without cropping, preserving aspect and centring —
+ * the equivalent of CSS `object-fit: contain`. Used for the logo, where losing the
+ * bee's antennae to a crop would be unacceptable.
+ */
+export function drawContain(
+  ctx: CanvasRenderingContext2D,
+  src: CanvasImageSource,
+  dest: Rect,
+) {
+  const { w: sw, h: sh } = sourceSize(src);
+  if (!sw || !sh) return;
+
+  const scale = Math.min(dest.w / sw, dest.h / sh);
+  const dw = sw * scale;
+  const dh = sh * scale;
+  ctx.drawImage(src, dest.x + (dest.w - dw) / 2, dest.y + (dest.h - dh) / 2, dw, dh);
+}
+
+/** Split a word that is itself wider than `maxWidth` into hard-broken chunks. */
+function breakWord(
+  ctx: CanvasRenderingContext2D,
+  word: string,
+  maxWidth: number,
+): string[] {
+  const parts: string[] = [];
+  let cur = "";
+
+  for (const ch of word) {
+    if (cur && ctx.measureText(cur + ch).width > maxWidth) {
+      parts.push(cur);
+      cur = ch;
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur) parts.push(cur);
+
+  return parts;
+}
+
+/**
+ * Greedy word wrap against the current `ctx.font`.
+ *
+ * Set the font before calling — measurement depends on it. Words too long to fit on
+ * a line of their own are hard-broken rather than allowed to overflow, so a pasted
+ * URL or a run of emoji cannot push past the card's margin.
+ */
+export function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const lines: string[] = [];
+  let line = "";
+
+  const flush = () => {
+    if (line) {
+      lines.push(line);
+      line = "";
+    }
+  };
+
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (ctx.measureText(word).width > maxWidth) {
+      flush();
+      const parts = breakWord(ctx, word, maxWidth);
+      lines.push(...parts.slice(0, -1));
+      line = parts[parts.length - 1] ?? "";
+      continue;
+    }
+
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      line = candidate;
+    } else {
+      flush();
+      line = word;
+    }
+  }
+  flush();
+
+  return lines;
+}
+
+/** Trim `lines` to `maxLines`, marking the cut with an ellipsis. */
+function clampLines(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  maxLines: number,
+  maxWidth: number,
+): string[] {
+  if (lines.length <= maxLines) return lines;
+
+  const kept = lines.slice(0, maxLines);
+  let last = kept[maxLines - 1];
+
+  while (last && ctx.measureText(`${last}…`).width > maxWidth) {
+    last = last.slice(0, -1);
+  }
+  kept[maxLines - 1] = `${last.trimEnd()}…`;
+
+  return kept;
+}
+
+/**
+ * Footer: the mark on the left, caption beside it, both vertically centred in the
+ * footer band.
+ *
+ * Left-aligned rather than centred so the mark lines up with the left edge of the
+ * photos above it.
+ */
 function drawFooter(ctx: CanvasRenderingContext2D, input: RenderInput) {
-  const { layout, theme, content } = input;
-  const baseline = layout.canvas.h - layout.padding.bottom;
-  const centreX = layout.canvas.w / 2;
+  const { layout, theme, content, logo } = input;
+  const duo = layout.mode === "duo";
+
+  const capSize = duo ? 28 : 20;
+  const capGap = duo ? 18 : 12;
+  const hasCaption = Boolean(content.caption);
+
+  // The mark carries the footer alone now that the wordmark text is gone, so it
+  // takes most of the band rather than sharing it.
+  const markSize = logo ? Math.min(layout.footer * 0.82, duo ? 150 : 104) : 0;
+
+  const footerTop = layout.canvas.h - layout.padding.bottom - layout.footer;
+  const midY = footerTop + layout.footer / 2;
+  const left = layout.padding.left;
 
   ctx.save();
-  ctx.textAlign = "center";
-  ctx.fillStyle = theme.ink;
 
-  const titleSize = layout.mode === "duo" ? 54 : 34;
-  ctx.font = `600 ${titleSize}px ui-sans-serif, system-ui, sans-serif`;
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText(content.title, centreX, baseline - 62, layout.canvas.w - layout.padding.left * 2);
+  if (logo) {
+    drawContain(ctx, logo, {
+      x: left,
+      y: midY - markSize / 2,
+      w: markSize,
+      h: markSize,
+    });
+  }
 
-  if (content.caption) {
-    const capSize = layout.mode === "duo" ? 30 : 22;
-    ctx.font = `400 ${capSize}px ui-sans-serif, system-ui, sans-serif`;
+  if (hasCaption) {
+    // Centred on the card itself, not on the space beside the mark — otherwise the
+    // caption reads as pushed to the right.
+    //
+    // Collision with the mark is prevented by the *width* instead: the text box is
+    // symmetric about the card's centre and stops short of the mark on both sides,
+    // so wrapped lines stay clear of the logo while still looking centred.
+    const centreX = layout.canvas.w / 2;
+    const clearance = left + (logo ? markSize + capGap : 0);
+    const availW = Math.max(
+      layout.canvas.w - 2 * clearance,
+      // Degenerate case: a mark so wide there is no symmetric room left. Fall back
+      // to the region beside it rather than emitting a zero-width text box.
+      Math.min(120, layout.canvas.w - layout.padding.right - clearance),
+    );
+
+    ctx.font = `400 ${capSize}px ${CARD_FONT}`;
     ctx.fillStyle = withAlpha(theme.ink, 0.65);
-    ctx.fillText(content.caption, centreX, baseline - 16, layout.canvas.w - layout.padding.left * 2);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const lineH = capSize * 1.32;
+    const maxLines = Math.max(1, Math.floor(layout.footer / lineH));
+    const lines = clampLines(
+      ctx,
+      wrapText(ctx, content.caption, availW),
+      maxLines,
+      availW,
+    );
+
+    const startY = midY - ((lines.length - 1) * lineH) / 2;
+
+    lines.forEach((line, i) => {
+      ctx.fillText(line, centreX, startY + i * lineH);
+    });
   }
 
   ctx.restore();

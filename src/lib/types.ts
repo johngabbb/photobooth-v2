@@ -81,8 +81,12 @@ export interface CardTheme {
 export type Shot = Partial<Record<Role, CanvasImageSource | null>>;
 
 export interface CardContent {
-  title: string;
-  /** Free text under the title. Usually a date. */
+  /**
+   * Free text in the footer, under the mark. Usually a date.
+   *
+   * There is deliberately no title field: the logo *is* the wordmark, so printing
+   * "pamkin photo bee" beside it said the same thing twice.
+   */
   caption: string;
 }
 
@@ -96,6 +100,12 @@ export interface RenderInput {
    * expect their own reflection; the printed output usually should not be.
    */
   mirror: boolean;
+  /**
+   * The bee-on-pumpkin mark, drawn in the footer beside the title. Optional so the
+   * renderer stays usable before the image has loaded — the card simply centres its
+   * text instead.
+   */
+  logo?: CanvasImageSource | null;
   /** Multiplier over the layout's design pixels. 1 = 300 DPI. */
   scale: number;
 }

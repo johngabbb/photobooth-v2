@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CardCanvas } from "@/components/CardCanvas";
+import { BRAND_ASSETS } from "@/lib/brand";
 import { PHOTO_COUNTS, THEMES, findTheme, layoutFor } from "@/lib/layouts";
 import { placeholderShots } from "@/lib/placeholders";
 import { renderToBlob } from "@/lib/render";
@@ -13,7 +14,12 @@ import type { CardMode, RenderInput, Shot } from "@/lib/types";
  * geometry and export pipeline right before either lands.
  */
 
-const PREVIEW_SCALE = 0.42;
+/**
+ * Preview bitmap scale. Higher than it needs to be on purpose: the canvas is sized
+ * down by CSS to fit the viewport, so rendering extra pixels keeps it crisp on tall
+ * screens and on high-DPI displays.
+ */
+const PREVIEW_SCALE = 0.6;
 const EXPORT_SCALE = 1; // 300 DPI
 
 function todayLabel() {
@@ -22,6 +28,27 @@ function todayLabel() {
     month: "long",
     day: "numeric",
   });
+}
+
+/**
+ * Load the brand mark for stamping onto the card.
+ *
+ * `renderCard` treats the logo as optional, so the first paint simply centres the
+ * footer text and the mark appears once decoded — no layout shift, no blocking.
+ */
+function useBrandMark(): HTMLImageElement | null {
+  const [mark, setMark] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setMark(img);
+    img.src = BRAND_ASSETS.mark;
+    return () => {
+      img.onload = null;
+    };
+  }, []);
+
+  return mark;
 }
 
 export function CardStudio() {
@@ -37,16 +64,18 @@ export function CardStudio() {
 
   const layout = useMemo(() => layoutFor(mode, count), [mode, count]);
   const theme = useMemo(() => findTheme(themeId), [themeId]);
+  const mark = useBrandMark();
 
   const base: Omit<RenderInput, "scale"> = useMemo(
     () => ({
       layout,
       theme,
-      content: { title: "Pamkin and Bee", caption },
+      content: { caption },
       shots,
       mirror,
+      logo: mark,
     }),
-    [layout, theme, caption, shots, mirror],
+    [layout, theme, caption, shots, mirror, mark],
   );
 
   const preview: RenderInput = useMemo(
@@ -61,7 +90,7 @@ export function CardStudio() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `pamkin-and-bee-${layout.id}.png`;
+      a.download = `pamkin-photo-bee-${layout.id}.png`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -70,18 +99,21 @@ export function CardStudio() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-10 px-6 py-12 lg:grid-cols-[1fr_20rem]">
-      <div className="flex flex-col items-center gap-4">
+    // `min-h-0` on both the grid and the preview column is what actually makes the
+    // no-scroll layout work: without it a flex/grid child refuses to shrink below
+    // its content's intrinsic size and pushes the page taller than the viewport.
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_18rem]">
+      <div className="flex min-h-0 flex-col items-center justify-center gap-3">
         <CardCanvas
           input={preview}
-          className="w-full max-w-sm rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
+          className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
         />
-        <p className="font-mono text-xs text-ink/50">
+        <p className="shrink-0 font-mono text-[11px] text-ink/50">
           {layout.physical} &middot; {layout.canvas.w}&times;{layout.canvas.h}px &middot; 300 DPI
         </p>
       </div>
 
-      <aside className="flex flex-col gap-7">
+      <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto">
         <Field label="Card">
           <Segmented
             options={[
@@ -147,8 +179,8 @@ export function CardStudio() {
           {busy ? "Rendering…" : "Download PNG"}
         </button>
 
-        <p className="text-xs leading-relaxed text-ink/50">
-          Phase 0 — placeholder photos. The preview above runs the same
+        <p className="shrink-0 text-[11px] leading-relaxed text-ink/45">
+          Phase 0 — placeholder photos. The preview runs the same
           <code className="mx-1 font-mono">renderCard</code>
           that produces the download, so they cannot drift apart.
         </p>

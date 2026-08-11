@@ -18,7 +18,7 @@ const CardStudio = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex flex-1 items-center justify-center py-24 text-sm text-ink/40">
+      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-ink/40">
         Loading studio…
       </div>
     ),

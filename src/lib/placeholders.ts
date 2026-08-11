@@ -1,3 +1,4 @@
+import { CARD_FONT } from "./brand";
 import { ROLES } from "./types";
 import type { Role, Shot } from "./types";
 
@@ -44,12 +45,12 @@ export function placeholderPhoto(role: Role, index: number): HTMLCanvasElement {
 
   // Shot number, large enough to survive a hard crop.
   ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.font = "700 190px ui-sans-serif, system-ui, sans-serif";
+  ctx.font = `700 190px ${CARD_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(String(index + 1), SOURCE.w / 2, SOURCE.h * 0.42);
 
-  ctx.font = "600 42px ui-sans-serif, system-ui, sans-serif";
+  ctx.font = `600 42px ${CARD_FONT}`;
   ctx.fillText(role.toUpperCase(), SOURCE.w / 2, SOURCE.h * 0.85);
 
   return canvas;

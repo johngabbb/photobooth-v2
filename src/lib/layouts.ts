@@ -1,3 +1,4 @@
+import { BRAND } from "./brand";
 import type { CardTheme, Layout } from "./types";
 
 /**
@@ -74,34 +75,42 @@ export function layoutFor(mode: Layout["mode"], slots: number): Layout {
   return found;
 }
 
+/** Card themes, built from the sampled logo palette so cards match the branding. */
 export const THEMES: CardTheme[] = [
   {
     id: "cream",
     name: "Cream",
-    paper: "#FFF6EA",
-    ink: "#3A2A1C",
-    accent: "#F0A24B",
+    paper: BRAND.cream,
+    ink: BRAND.ink,
+    accent: BRAND.pumpkin,
   },
   {
     id: "honey",
     name: "Honey",
-    paper: "#F7C948",
-    ink: "#3A2A1C",
-    accent: "#3A2A1C",
+    paper: BRAND.honey,
+    ink: BRAND.ink,
+    accent: BRAND.ink,
   },
   {
     id: "pumpkin",
     name: "Pumpkin",
-    paper: "#E8743B",
-    ink: "#FFF6EA",
-    accent: "#FFF6EA",
+    paper: BRAND.pumpkin,
+    ink: BRAND.paper,
+    accent: BRAND.paper,
+  },
+  {
+    id: "wing",
+    name: "Wing",
+    paper: BRAND.wing,
+    ink: BRAND.ink,
+    accent: BRAND.leaf,
   },
   {
     id: "ink",
     name: "Ink",
-    paper: "#2B2118",
-    ink: "#FFF6EA",
-    accent: "#F7C948",
+    paper: BRAND.ink,
+    ink: BRAND.paper,
+    accent: BRAND.honey,
   },
 ];
 

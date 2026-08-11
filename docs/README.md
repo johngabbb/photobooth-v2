@@ -4,6 +4,7 @@
 |---|---|
 | [plan.md](./plan.md) | What we're building and the phased path to it. Start here. |
 | [architecture.md](./architecture.md) | System design — realtime transport, shutter synchronisation, frame handoff, session model. |
+| [brand.md](./brand.md) | Logo assets, the sampled palette, and card typography. |
 | [decisions.md](./decisions.md) | Choices that look arbitrary from the code, with reasoning. Read before reversing one. |
 
 Project-level conventions and traps for contributors (human or agent) live in
@@ -13,7 +14,9 @@ Project-level conventions and traps for contributors (human or agent) live in
 
 **Phase 0 is complete.** The card renderer, layout system, design tokens, and PNG
 export all work against synthetic placeholder photos — six layouts (solo and duo ×
-2/3/4 photos), four themes, mirroring, and a 300 DPI export.
+2/3/4 photos), five themes, mirroring, and a 300 DPI export. Branding is wired
+throughout: the palette is sampled from the logo, and the mark is stamped onto every
+card's footer.
 
 No camera and no networking yet. That is deliberate: Phase 0 exists to get the
 geometry and export pipeline right while they are still cheap to change.

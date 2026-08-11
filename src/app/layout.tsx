@@ -13,17 +13,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pamkin and Bee",
+  title: "pamkin photo bee",
   description: "A photobooth for two, on two devices, with one shutter.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // The booth is a fixed-viewport app, not a document: the page itself never
+    // scrolls. Anything that needs to overflow scrolls inside its own pane.
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full overflow-hidden antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex h-full flex-col overflow-hidden">{children}</body>
     </html>
   );
 }

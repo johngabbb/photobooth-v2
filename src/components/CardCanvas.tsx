@@ -33,13 +33,8 @@ export function CardCanvas({
     renderCard(ctx, input);
   }, [input]);
 
-  return (
-    <canvas
-      ref={ref}
-      className={className}
-      style={{
-        aspectRatio: `${input.layout.canvas.w} / ${input.layout.canvas.h}`,
-      }}
-    />
-  );
+  // No explicit CSS width or height: the canvas keeps its intrinsic bitmap size,
+  // so `max-h-*` / `max-w-*` from the caller shrink it with the aspect ratio
+  // intact. Setting both dimensions in CSS would stretch the bitmap instead.
+  return <canvas ref={ref} className={className} />;
 }

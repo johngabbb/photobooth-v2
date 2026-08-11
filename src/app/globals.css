@@ -1,22 +1,31 @@
 @import "tailwindcss";
 
 /**
- * Design tokens for Pamkin and Bee.
+ * Design tokens for pamkin photo bee.
  *
- * Tailwind v4 takes its theme from CSS, not a JS config file — every custom
- * property declared in `@theme` becomes a utility (`--color-pumpkin` gives you
- * `bg-pumpkin`, `text-pumpkin`, `ring-pumpkin`, and so on).
+ * The five brand colours are sampled directly out of `public/brand/photobee.png`
+ * (see docs/brand.md) rather than eyeballed, so the UI and the logo artwork agree
+ * exactly. Surfaces are derived — the logo has no background of its own.
  *
- * These values are intentionally duplicated as plain hex in `src/lib/layouts.ts`,
- * because the canvas renderer cannot read CSS custom properties. If you change a
- * card colour here, change it there too — see docs/decisions.md.
+ * Tailwind v4 takes its theme from CSS, not a JS config: every custom property
+ * declared in `@theme` becomes a utility, so `--color-pumpkin` gives you
+ * `bg-pumpkin`, `text-pumpkin`, `ring-pumpkin`, and so on.
+ *
+ * These values are intentionally duplicated as plain hex in `src/lib/brand.ts`,
+ * because the canvas renderer cannot read CSS custom properties. Change both
+ * together — see docs/decisions.md D7.
  */
 @theme {
-  --color-pumpkin: #e8743b;
-  --color-honey: #f7c948;
-  --color-cream: #fff6ea;
-  --color-paper: #fffdf9;
-  --color-ink: #3a2a1c;
+  /* Sampled from the logo */
+  --color-ink: #1e1f18; /* linework and body text */
+  --color-pumpkin: #fa8730; /* pumpkin body, bee cheeks */
+  --color-honey: #fcc44d; /* bee body and stripes */
+  --color-leaf: #598718; /* the leaf */
+  --color-wing: #e0efee; /* wings — a cool off-white */
+
+  /* Derived surfaces */
+  --color-cream: #fff4e2; /* page background */
+  --color-paper: #fffcf6; /* raised surfaces and card stock */
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

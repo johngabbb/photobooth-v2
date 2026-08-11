@@ -114,14 +114,105 @@ video call with the host by definition.
 
 ---
 
+## D8 — The palette is sampled from the logo, not chosen beside it
+
+**Status:** decided
+
+Brand colours were extracted per-region from `public/brand/photobee.png` and recorded
+in `BRAND` (`src/lib/brand.ts`). Nothing was picked by eye.
+
+Sampling caught two things eyeballing would have got wrong: the linework is `#1E1F18`,
+a warm charcoal rather than black, and the leaf is `#598718` — a deep olive that
+*looks* like bright grass green at a glance. Guessing either would have left the UI
+subtly out of tune with the artwork it sits next to.
+
+Only `cream` and `paper` are invented, because the logo ships with a transparent
+background and the app needs a surface to sit on. Method is in `docs/brand.md`.
+
+---
+
+## D9 — Card text uses a concrete font stack
+
+**Status:** load-bearing, do not "tidy"
+
+`CARD_FONT` names real families (`system-ui`, `Segoe UI`, `Roboto`, `Arial`,
+`DejaVu Sans`, …) rather than the tidier CSS-style `ui-sans-serif, system-ui,
+sans-serif`.
+
+Canvas `font` parsing is not CSS. An unresolvable leading entry can drop the entire
+declaration to the platform default, and on several renderers that default is a serif.
+Headless renders here came out in DejaVu Serif until real families were named — the
+first visible symptom of a bug that would only ever have shown up in the *exported
+file*, never in the browser UI, and only for some users.
+
+Nothing about the shorter stack is safe just because it looks like valid CSS.
+
+---
+
+## D10 — The app is viewport-locked; the page never scrolls
+
+**Status:** structural — new UI must fit inside it
+
+`<html>` and `<body>` are `h-full overflow-hidden`. The booth is an app, not a
+document: a photobooth that scrolls away from the live camera during a countdown
+would be broken. Anything that overflows scrolls inside its own pane instead — the
+studio's controls column is `overflow-y-auto`.
+
+Two details make this work, and both are easy to undo by accident:
+
+- **`min-h-0` on every flex/grid ancestor of the preview.** A flex child defaults to
+  `min-height: auto`, which refuses to shrink below its content's intrinsic size and
+  silently pushes the page taller than the viewport. Removing one `min-h-0` breaks
+  the whole thing.
+- **The preview canvas gets no CSS width or height** — only `max-h-full max-w-full`.
+  It keeps its intrinsic bitmap size and scales down with its aspect ratio intact.
+  Setting both CSS dimensions would stretch the bitmap instead of fitting it.
+
+Verified in Chromium at 1440x900, 1280x700, and 1280x600, on both the 4x6 card and
+the much taller solo strip: no page scroll, aspect ratio preserved.
+
+---
+
+## D11 — The card footer is the mark alone, no wordmark text
+
+**Status:** decided
+
+The footer originally printed "pamkin photo bee" next to the logo. The logo *is* the
+wordmark, so that said the same thing twice. `CardContent` has no `title` field as a
+result — only a caption.
+
+The mark is pinned to the card's left padding so it lines up with the left edge of the
+photos above it. The caption is centred on **the card's true centre**.
+
+Centring it in the space beside the mark instead was tried and rejected: it reads as
+pushed to the right, because the eye centres against the card edges, not against the
+logo. Collision with the mark is prevented by the text box's *width* rather than its
+position — the box is symmetric about the card centre and stops short of the mark on
+both sides, so wrapped lines stay clear while the caption still looks centred.
+
+Captions wrap rather than overflow (`wrapText`), with three behaviours worth keeping:
+
+- Words too wide for a line of their own are **hard-broken**, so a pasted URL or an
+  unbroken string cannot push past the margin.
+- The block is clamped to whatever fits the footer band, with an ellipsis marking the
+  cut, so a long caption cannot grow into the photos.
+- `ctx.font` must be set **before** calling `wrapText` — measurement depends on it.
+
+Verified against short, wrapping, unbreakable (400 characters, no spaces), and
+mixed inputs, plus empty and whitespace-only.
+
+---
+
 ## D7 — Colours are duplicated between CSS and TypeScript
 
 **Status:** accepted wart
 
-Card colours live in `THEMES` (`layouts.ts`) as hex **and** in the `@theme` block in
-`globals.css` as Tailwind tokens. A canvas cannot read CSS custom properties, so one
-source of truth is not available without reading computed styles at render time —
-which would make the renderer DOM-dependent and break D2's portability.
+Brand colours live in `BRAND` (`src/lib/brand.ts`) as hex **and** in the `@theme` block
+in `globals.css` as Tailwind tokens. A canvas cannot read CSS custom properties, so a
+single source of truth is not available without reading computed styles at render
+time — which would make the renderer DOM-dependent and break D2's portability.
 
 Mitigation is a comment in both files. If it starts biting, the fix is to generate the
 CSS block from the TypeScript at build time, not to make the renderer read the DOM.
+
+*(D7 predates D8 and D9; kept at its original number so references stay valid.)*
