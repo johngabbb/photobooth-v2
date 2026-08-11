@@ -20,6 +20,15 @@ export interface Presence {
   /** Distinguishes two tabs held by the same person. */
   peerId: string;
   cameraReady: boolean;
+  /**
+   * Guest only: has this device measured its offset from the host's clock yet?
+   * The host is its own reference and publishes `true` from the start.
+   *
+   * Published as presence so the host can refuse to start a countdown that the
+   * guest would convert with a garbage offset — a check that has to be based on
+   * something the host can actually observe.
+   */
+  clockSynced: boolean;
   /** Wall-clock join time, used to break host conflicts deterministically. */
   joinedAt: number;
 }
@@ -33,7 +42,36 @@ export interface RoomSettings {
 export type SessionMessage =
   | { type: "settings"; from: SessionRole; settings: RoomSettings }
   /** Sent by a joiner so the host re-broadcasts current settings. */
-  | { type: "hello"; from: SessionRole };
+  | { type: "hello"; from: SessionRole }
+  /**
+   * Clock synchronisation. The guest pings, the host echoes with its own clock
+   * reading, and the guest derives the offset between the two devices. Only the
+   * guest computes anything — the host's clock *is* the reference.
+   */
+  | { type: "ping"; from: SessionRole; id: string; t0: number }
+  | { type: "pong"; from: SessionRole; id: string; t0: number; t1: number }
+  /**
+   * Fire both shutters. `at` is an absolute timestamp **on the host's clock**; each
+   * device converts to its own before scheduling. Broadcasting an instant rather
+   * than a "go now" command is what makes the two captures simultaneous instead of
+   * one-network-latency apart.
+   */
+  | { type: "capture"; from: SessionRole; shot: number; at: number; total: number }
+  /**
+   * One slice of a captured frame. Frames are chunked because a JPEG comfortably
+   * exceeds a single realtime message, and chunking removes any need to know the
+   * exact ceiling.
+   */
+  | {
+      type: "frame";
+      from: SessionRole;
+      shot: number;
+      seq: number;
+      total: number;
+      data: string;
+    }
+  /** Host tells everyone to discard shots and return to the lobby. */
+  | { type: "reset"; from: SessionRole };
 
 export type ConnectionState =
   | "idle"

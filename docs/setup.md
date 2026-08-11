@@ -125,6 +125,27 @@ banner is absent. If it is there, the environment variables did not reach the bu
 re-deploy after adding them, since they are inlined at build time rather than read at
 runtime.
 
+### How the deploy loop behaves
+
+Pushing to `main` builds and, if the build succeeds, replaces production. Any other
+branch produces a preview deployment on its own URL. Deployments are immutable —
+production is whichever one is currently promoted, so rollback re-points the domain
+rather than rebuilding. A failed build leaves the previous deployment serving.
+
+Two traps, both of which fail silently rather than loudly:
+
+- **`NEXT_PUBLIC_*` values are compiled into the bundle, not read at runtime.**
+  Changing them in the dashboard does nothing to the running site until you redeploy.
+  The symptom is the same-browser banner persisting after you have "definitely set"
+  the variables — the build simply predates them.
+- **Deployment Protection can gate preview URLs behind a Vercel login.** Fine on your
+  laptop, fatal for testing on two phones: the other person's device is not signed
+  into your account and will hit an auth wall. Check **Settings → Deployment
+  Protection** before a two-device session.
+
+Use a branch and its preview URL for Phase 3 work, so production stays stable while
+synchronised capture is being shaken out on real devices.
+
 ## Cross-device testing
 
 `getUserMedia` requires a secure context. `localhost` counts, but your phone cannot

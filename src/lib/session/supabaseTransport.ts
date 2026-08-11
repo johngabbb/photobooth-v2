@@ -129,6 +129,7 @@ export class SupabaseTransport implements Transport {
           role: p.role,
           peerId: p.peerId,
           cameraReady: p.cameraReady,
+          clockSynced: p.clockSynced,
           joinedAt: p.joinedAt,
         }));
       opts.onPeers(roster);

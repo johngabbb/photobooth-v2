@@ -203,11 +203,12 @@ real cross-device rooms, and `BroadcastChannel` for same-browser development. Bo
 are verified — the Supabase path against a live project, using two isolated browser
 contexts that can only communicate over the network.
 
-**Phase 2.5 — Deploy to Vercel** ← *do this before Phase 3, not after*
-Push to Vercel, set the two Supabase variables in the project settings, confirm a room
-works between two real devices on the deployed URL.
+**Phase 2.5 — Deploy to Vercel** ✅ *done*
+Live on Vercel from the GitHub `main` branch, Supabase variables set for Production
+and Preview, and **a room confirmed working between two real devices** on the
+deployed URL. That last part is the acceptance criterion — the rest is just a build.
 
-Deployment sits here rather than at the end because it is **test infrastructure for
+Deployment sat here rather than at the end because it is **test infrastructure for
 Phase 3, not a victory lap**. Phase 3 is two devices firing shutters together, and
 that cannot be meaningfully tested without two devices — which needs HTTPS, because
 `getUserMedia` does not exist over plain http and `localhost` cannot reach a phone.
@@ -238,10 +239,26 @@ HTTPS comes free, which is the whole point.
 
 ---
 
-**Phase 3 — Synchronized capture**
-Clock offset estimation, scheduled `captureAt` broadcast, simultaneous shutter, frame
-upload and exchange, dual composite. **This is the milestone that delivers the actual
-product.**
+**Phase 3 — Synchronized capture** ✅ *done*
+Clock offset estimation, `captureAt` broadcast, simultaneous shutter on both devices,
+frame exchange, and a dual composite that leaves each person holding the same card.
+**The product now exists.**
+
+How it works: the host never says "shoot now". It broadcasts an *instant* on its own
+clock; the guest converts using an offset measured by ping/pong through the channel
+(lowest-RTT sample wins — see `clock.ts`) and schedules against its own clock. A late
+message gives less warning but does not move the shutter.
+
+Frames ride the same channel as chunked JPEGs rather than going through object
+storage (D19), which means the whole feature works on the local transport and nothing
+is ever persisted. All shots are scheduled up front rather than chained (D21), which
+also makes retake a one-message operation.
+
+Verified both ways: over the local transport with two tabs, and over **real Supabase
+with the two peers in isolated browser contexts** — no shared storage, no
+`BroadcastChannel`, so only the network can connect them. 175 ms round trip, both
+devices reaching a complete card, both compositing the same result within compression
+noise (D20), and either able to download its own copy.
 
 **Phase 4 — Live peer preview**
 WebRTC video so each person can see their partner while posing, using the existing
