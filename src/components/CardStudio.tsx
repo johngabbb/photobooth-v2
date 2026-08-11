@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CardCanvas } from "@/components/CardCanvas";
-import { BRAND_ASSETS } from "@/lib/brand";
+import {
+  Field,
+  PrimaryButton,
+  Segmented,
+  ThemePicker,
+  todayLabel,
+} from "@/components/Controls";
+import { cardFilename, downloadCard } from "@/lib/download";
 import { PHOTO_COUNTS, THEMES, findTheme, layoutFor } from "@/lib/layouts";
 import { placeholderShots } from "@/lib/placeholders";
-import { renderToBlob } from "@/lib/render";
+import { useBrandMark } from "@/lib/useBrandMark";
 import type { CardMode, RenderInput, Shot } from "@/lib/types";
 
 /**
@@ -21,35 +28,6 @@ import type { CardMode, RenderInput, Shot } from "@/lib/types";
  */
 const PREVIEW_SCALE = 0.6;
 const EXPORT_SCALE = 1; // 300 DPI
-
-function todayLabel() {
-  return new Date().toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-/**
- * Load the brand mark for stamping onto the card.
- *
- * `renderCard` treats the logo as optional, so the first paint simply centres the
- * footer text and the mark appears once decoded — no layout shift, no blocking.
- */
-function useBrandMark(): HTMLImageElement | null {
-  const [mark, setMark] = useState<HTMLImageElement | null>(null);
-
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => setMark(img);
-    img.src = BRAND_ASSETS.mark;
-    return () => {
-      img.onload = null;
-    };
-  }, []);
-
-  return mark;
-}
 
 export function CardStudio() {
   const [mode, setMode] = useState<CardMode>("duo");
@@ -86,13 +64,7 @@ export function CardStudio() {
   async function download() {
     setBusy(true);
     try {
-      const blob = await renderToBlob({ ...base, scale: EXPORT_SCALE }, "image/png");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `pamkin-photo-bee-${layout.id}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadCard({ ...base, scale: EXPORT_SCALE }, cardFilename(layout.id));
     } finally {
       setBusy(false);
     }
@@ -104,10 +76,12 @@ export function CardStudio() {
     // its content's intrinsic size and pushes the page taller than the viewport.
     <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_18rem]">
       <div className="flex min-h-0 flex-col items-center justify-center gap-3">
-        <CardCanvas
-          input={preview}
-          className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
-        />
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+          <CardCanvas
+            input={preview}
+            className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
+          />
+        </div>
         <p className="shrink-0 font-mono text-[11px] text-ink/50">
           {layout.physical} &middot; {layout.canvas.w}&times;{layout.canvas.h}px &middot; 300 DPI
         </p>
@@ -134,22 +108,7 @@ export function CardStudio() {
         </Field>
 
         <Field label="Theme">
-          <div className="flex gap-2">
-            {THEMES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setThemeId(t.id)}
-                aria-label={t.name}
-                aria-pressed={themeId === t.id}
-                title={t.name}
-                className={`h-9 w-9 rounded-full ring-2 ring-offset-2 ring-offset-paper transition ${
-                  themeId === t.id ? "ring-ink" : "ring-transparent hover:ring-ink/25"
-                }`}
-                style={{ background: t.paper, boxShadow: `inset 0 0 0 3px ${t.ink}22` }}
-              />
-            ))}
-          </div>
+          <ThemePicker value={themeId} onChange={setThemeId} />
         </Field>
 
         <Field label="Caption">
@@ -170,14 +129,9 @@ export function CardStudio() {
           Mirror photos
         </label>
 
-        <button
-          type="button"
-          onClick={download}
-          disabled={busy || shots.length === 0}
-          className="rounded-full bg-pumpkin px-5 py-3 text-sm font-semibold text-cream shadow-lg shadow-pumpkin/30 transition hover:brightness-105 disabled:opacity-50"
-        >
+        <PrimaryButton onClick={download} disabled={busy || shots.length === 0}>
           {busy ? "Rendering…" : "Download PNG"}
-        </button>
+        </PrimaryButton>
 
         <p className="shrink-0 text-[11px] leading-relaxed text-ink/45">
           Phase 0 — placeholder photos. The preview runs the same
@@ -189,43 +143,3 @@ export function CardStudio() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-semibold uppercase tracking-widest text-ink/45">
-        {label}
-      </span>
-      {children}
-    </div>
-  );
-}
-
-function Segmented({
-  options,
-  value,
-  onChange,
-}: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-lg bg-ink/5 p-1">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          aria-pressed={value === o.value}
-          className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-            value === o.value
-              ? "bg-paper text-ink shadow-sm"
-              : "text-ink/55 hover:text-ink"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}

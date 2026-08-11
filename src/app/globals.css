@@ -35,3 +35,28 @@ body {
   background-color: var(--color-cream);
   color: var(--color-ink);
 }
+
+/*
+ * Countdown digit.
+ *
+ * Not Tailwind's `animate-ping`: that one *ends* at opacity 0, which makes the digit
+ * invisible for most of its second on screen. This pops in and then holds.
+ */
+@keyframes countdown-pop {
+  0% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+  30% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.countdown-digit {
+  animation: countdown-pop 0.4s ease-out both;
+}

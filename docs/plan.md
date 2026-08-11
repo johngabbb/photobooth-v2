@@ -1,4 +1,4 @@
-# Pamkin and Bee — Photobooth Plan
+# pamkin photo bee — Photobooth Plan
 
 A web photobooth where two people, on **two different devices**, open their cameras
 into a shared live session. One countdown fires **both cameras at the same instant**.
@@ -152,8 +152,9 @@ measures:
 **Cropping:** camera gives 4:3 or 16:9; slots are portrait. Center-crop for v1. Face
 detection to bias the crop is a nice later addition, not a v1 concern.
 
-**Mirroring:** show the preview mirrored (people expect their selfie view) but write
-the output un-mirrored, with a toggle if it looks wrong in testing.
+**Mirroring — settled in Phase 1.** The preview is always mirrored, because people
+expect a mirror when facing a camera. The *output* now defaults to mirrored too, so
+the card matches what you were looking at while posing; a toggle un-mirrors it.
 
 ---
 
@@ -179,16 +180,28 @@ the canvas renderer, and a card studio driven by synthetic placeholder photos. A
 layouts (solo and duo × 2/3/4 photos) render and export to PNG at 300 DPI.
 Geometry verified by 39 assertions over the pure `slotRects` / `halfRects` functions.
 
-**Phase 1 — Solo booth, end to end** ← *the de-risking phase*
-One device: camera permission → live preview → countdown → N shots → composite →
-download. No session, no realtime, no second person. This is a complete, shippable
-photobooth on its own, and it proves out the camera, canvas, cropping, and export
-work before any distributed-systems complexity lands.
+**Phase 1 — Solo booth, end to end** ✅ *done*
+One device, complete: camera permission → mirrored live preview framed to the card
+slot → 3-2-1 countdown → N captures with a pause between → composite → PNG download,
+plus per-slot retake. Lives at `/`; the Phase 0 layout harness moved to `/studio`.
 
-**Phase 2 — Session plumbing**
-Room creation, codes, QR, join flow, Supabase Realtime channel, presence, role
-assignment, host-authoritative settings sync. Still no shared capture — just two
-people in a room seeing each other's ready state.
+The capture loop schedules against an absolute timestamp rather than chained
+timeouts (decisions D12), which is the same shape Phase 3 needs for two devices.
+Camera failures are distinguished rather than collapsed into "camera error" (D13).
+
+Verified end to end in Chromium against a synthetic camera device: permission,
+live stream, mirroring, countdown, four distinct captures landing in the right
+slots, a 300 DPI PNG download, retake, and no clipping or page scroll.
+
+**Phase 2 — Session plumbing** ✅ *done*
+Landing page, Crockford-Base32 room codes with input normalisation, QR and copyable
+join link, `/join` flow, `/room/[code]`, presence, role assignment, and
+host-authoritative settings sync. No shared capture yet — exactly as scoped.
+
+The transport is an interface (D15) with two implementations: Supabase Realtime for
+real cross-device rooms, and `BroadcastChannel` for same-browser development. Both
+are verified — the Supabase path against a live project, using two isolated browser
+contexts that can only communicate over the network.
 
 **Phase 3 — Synchronized capture**
 Clock offset estimation, scheduled `captureAt` broadcast, simultaneous shutter, frame

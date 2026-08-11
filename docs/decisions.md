@@ -149,6 +149,172 @@ Nothing about the shorter stack is safe just because it looks like valid CSS.
 
 ---
 
+## D15 — The session transport is an interface with two implementations
+
+**Status:** decided in Phase 2
+
+`Transport` (`src/lib/session/types.ts`) is presence + broadcast, and nothing else.
+Two implementations sit behind it: `SupabaseTransport` for real cross-device rooms,
+and `LocalTransport` over `BroadcastChannel` for same-browser development.
+
+The seam pays for itself three times over:
+
+- **The flow could be built and tested before any account existed.** Codes, joining,
+  presence, role assignment, and settings sync were all verified with two tabs.
+- **The app degrades honestly.** With no credentials it still runs, behind a banner
+  that says plainly it cannot reach another device — rather than appearing to work
+  and failing silently when a second phone joins.
+- **Phase 3 needs no new surface.** Broadcasting `captureAt` is a `send()` on the
+  channel that already exists.
+
+The interface is deliberately smaller than what Supabase offers. Anything richer
+would be a Supabase shape that `BroadcastChannel` could not honestly implement, and
+the point of the seam is that both sides really satisfy it.
+
+---
+
+## D18 — The Supabase client is shared; channels are not
+
+**Status:** load-bearing
+
+`createClient` is memoised per credential pair (`getClient`). Constructing one per
+room join spawns competing GoTrue auth clients contending for the same localStorage
+key, which Supabase explicitly warns is undefined behaviour. Auth is disabled
+outright too — rooms are anonymous, so there is no session to persist or refresh.
+
+Sharing the client creates a second problem that must be handled: `client.channel(topic)`
+returns an **existing** channel if one is already registered for that topic, and
+attaching listeners to a channel that has already subscribed throws
+`cannot add 'presence' callbacks after subscribe()`.
+
+That fires in ordinary development, because React Strict Mode mounts effects twice:
+the second mount asks for the same topic and gets back the first mount's subscribed
+channel. The topic cannot be made unique to dodge it — both peers must meet on
+`room:CODE`. So `join()` removes any channel already registered for the topic before
+creating its own.
+
+`join()` also resolves on a timeout. Without it, a channel that goes straight to
+`CLOSED` leaves the promise pending forever and the room sits on "Connecting…" with
+nothing to explain why — which is exactly how this bug first presented.
+
+---
+
+## D16 — The host is decided by a sessionStorage claim, not by timing
+
+**Status:** decided
+
+The creator writes `pamkin:host:<code>` to `sessionStorage` *before* navigating into
+the room; whoever holds that claim joins as host (`pamkin`), everyone else as guest
+(`bee`). Session roles and card roles are the same enum, so a captured frame already
+knows which half of the card it belongs to.
+
+Deciding by arrival order instead would depend on comparing wall clocks across two
+devices, which is exactly the thing Phase 3 has to work hard to correct for. A local
+claim needs no clock at all.
+
+`joinedAt` survives only as a tiebreaker: if two tabs somehow both hold a claim, the
+later joiner detects the conflict in the presence roster and demotes itself, so the
+room never has two writers.
+
+---
+
+## D17 — Presence must not churn
+
+**Status:** load-bearing
+
+Both transports can deliver an unchanged roster many times a second — the local one
+gossips on an 800 ms heartbeat, and Supabase re-syncs presence liberally. Pushing
+each of those into React state re-renders the room continuously.
+
+Two guards, and both are needed:
+
+- `LocalTransport` only emits when a peer's presence actually differs, so heartbeats
+  are invisible.
+- `useSession` compares a roster key before calling `setPeers`, which covers any
+  transport including Supabase.
+
+This was not theoretical. `useSession` returns a fresh object every render, so a
+component effect depending on `session` rather than on the specific callback it uses
+re-fired every render — and because publishing presence *causes* a render, that was
+an infinite loop, not a performance nit. Depend on the destructured callback.
+
+---
+
+## D12 — The capture loop schedules against absolute wall-clock time
+
+**Status:** load-bearing for Phase 3
+
+The booth does not chain relative `setTimeout`s. It sets a `captureAt` timestamp and
+a `requestAnimationFrame` loop fires when `Date.now() >= captureAt`.
+
+On one device this is merely tidy — a stalled frame self-corrects instead of adding
+drift to every subsequent shot. The reason it is built this way now is Phase 3:
+synchronising two devices means broadcasting exactly this timestamp and letting each
+device schedule against its own clock-corrected copy. Keeping the single-device loop
+in that shape means Phase 3 adds a transport, not a rewrite.
+
+rAF drives the countdown *animation*; the decision to fire is always a comparison
+against the clock, never a count of elapsed frames.
+
+The pending-shot queue is a ref (`queueRef`) rather than state, and holds slot
+indices. That is what makes "retake photo 3" the same code path as "take all four" —
+one queues `[2]`, the other `[0,1,2,3]`.
+
+---
+
+## D13 — Camera failures are distinguished, not collapsed
+
+**Status:** decided
+
+`useCamera` maps `getUserMedia` rejections onto specific states — `denied`,
+`notfound`, `busy`, `insecure`, `unsupported` — each with its own message and fix.
+
+This is most of the module by volume, and deliberately so. "Camera error" is useless
+when the real problem is that the page is on plain http (`getUserMedia` simply does
+not exist there), or that a video call already holds the device. `NotReadableError`
+in particular means "hardware is fine, something else has it" — worth saying plainly.
+
+Constraints use `ideal`, never `exact`: an unsatisfiable exact constraint throws
+`OverconstrainedError`, which would surface to the user as "no camera found" on a
+machine that has one.
+
+The visibility handler is not optional. iOS ends camera tracks when the tab
+backgrounds and does not resume them, so without it the preview is a frozen frame
+after any notification.
+
+---
+
+## D14 — Aspect-ratio fitting uses an intrinsic-size spacer
+
+**Status:** structural
+
+**The card canvas** fits by CSS: its bitmap gives it an intrinsic aspect ratio, so
+`max-h-full max-w-full` scales it down with the ratio intact.
+
+**The camera stage measures instead** (`useFitBox`, a ResizeObserver). CSS cannot
+express it, and three plausible-looking approaches all fail:
+
+- A bare `aspect-ratio` div has no intrinsic size to scale from — one axis wins and
+  the ratio breaks.
+- An `<svg>` spacer looks like the canvas trick but is not. SVG `width`/`height` are
+  *presentation attributes*: they become CSS declarations, so `max-width` clamps the
+  width and leaves the height untouched. A canvas's attributes set its bitmap, which
+  is why only the canvas gets an intrinsic ratio. Adding a `viewBox` does not rescue
+  it.
+- Percentage `max-height` resolves against the parent's height, so any auto-height
+  wrapper in the chain silently turns it into `none`.
+
+This was shipped broken in Phase 1 and only caught in Phase 2, because a portrait
+slot in a portrait column looks plausible when the box is silently taking its
+container's shape. It became obvious the moment a *landscape* slot appeared. Both
+E2E suites now assert the preview box ratio against the slot it claims to represent.
+
+Related trap: `max-h-full` resolves against the whole flex column, not the space left
+after siblings. The stage therefore lives in its own `flex-1 min-h-0` box, or the
+caption line beneath it gets clipped out of the viewport.
+
+---
+
 ## D10 — The app is viewport-locked; the page never scrolls
 
 **Status:** structural — new UI must fit inside it
