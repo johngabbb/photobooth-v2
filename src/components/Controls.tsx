@@ -365,30 +365,45 @@ export function BorderPicker({
   );
 }
 
+/**
+ * `block` fills the container instead of hugging the label. Opt-in, so a pair of
+ * buttons whose labels differ in length can still come out the same size — see the
+ * session panel in the room.
+ */
 export function PrimaryButton({
   children,
+  block,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { block?: boolean }) {
   return (
     <button
       type="button"
       {...props}
-      className="rounded-full bg-pumpkin px-5 py-3 text-sm font-semibold text-cream shadow-lg shadow-pumpkin/30 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+      className={`rounded-full bg-pumpkin px-5 py-3 text-sm font-semibold text-cream shadow-lg shadow-pumpkin/30 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 ${
+        block ? "w-full" : ""
+      }`}
     >
       {children}
     </button>
   );
 }
 
+/**
+ * `block` fills the container *and* takes the primary button's taller padding, so a
+ * primary/secondary pair matches on both axes rather than only on width.
+ */
 export function SecondaryButton({
   children,
+  block,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { block?: boolean }) {
   return (
     <button
       type="button"
       {...props}
-      className="rounded-full border border-ink/15 px-5 py-2.5 text-sm font-medium text-ink/70 transition hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+      className={`rounded-full border border-ink/15 px-5 text-sm font-medium text-ink/70 transition hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 ${
+        block ? "w-full py-3" : "py-2.5"
+      }`}
     >
       {children}
     </button>

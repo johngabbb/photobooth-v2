@@ -14,7 +14,9 @@ import {
   ThemePicker,
   todayLabel,
 } from "@/components/Controls";
+import { useRouter } from "next/navigation";
 import { useCamera } from "@/lib/camera";
+import { useCreateSession } from "@/lib/session/useCreateSession";
 import { XL_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 import { captureFrame, emptyShots } from "@/lib/capture";
 import { cardFilename, downloadCard } from "@/lib/download";
@@ -47,13 +49,17 @@ const PREVIEW_SCALE = 0.6;
 
 const ROLE_LABEL: Record<Role, string> = { pamkin: "Pamkin", bee: "Bee" };
 
-export function Room({ code }: { code: string }) {
-  const session = useSession(code);
+export function Room({ code }: { code: string | null }) {
+  // `""` makes useSession skip joining entirely — no channel, no presence, no clock.
+  // That is what lets `/room` render the whole booth before a session exists.
+  const session = useSession(code ?? "");
   const camera = useCamera();
   const mark = useBrandMark();
+  const router = useRouter();
 
   const [origin] = useState(() => window.location.origin);
-  const joinUrl = `${origin}/room/${code}`;
+  const joinUrl = code ? `${origin}/room/${code}` : "";
+  const { create, creating } = useCreateSession();
 
   const [started, setStarted] = useState(false);
   /**
@@ -330,7 +336,7 @@ export function Room({ code }: { code: string }) {
             scrolls — the one control you reach for should never be scrolled off.
             `shrink-0` keeps it at full height and lets the stage above absorb the
             space instead. */}
-        {isHost && !started && (
+        {code && isHost && !started && (
           <div className="shrink-0">
             <PrimaryButton onClick={startSession} disabled={!canStart}>
               {canStart ? `Take ${count} photos together` : "Waiting…"}
@@ -340,7 +346,7 @@ export function Room({ code }: { code: string }) {
       </div>
 
       <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1 xl:order-1">
-        {session.transportKind === "local" && (
+        {code && session.transportKind === "local" && (
           <div className="rounded-xl border border-honey/60 bg-honey/15 p-3">
             <p className="text-xs font-semibold text-ink/80">Same-browser mode</p>
             <p className="mt-1 text-[11px] leading-relaxed text-ink/60">
@@ -351,19 +357,38 @@ export function Room({ code }: { code: string }) {
           </div>
         )}
 
-        {!started && (
-          <Field label="Room code">
-            <div className="flex items-start gap-3">
-              <div className="flex flex-col gap-1">
-                <span className="font-mono text-3xl font-bold tracking-[0.2em] text-ink">
-                  {code}
-                </span>
-                <CopyLink url={joinUrl} />
+        {/* Before a session exists this slot offers the two ways to get one; once
+            there is a code it becomes the code and QR to share. Same position in the
+            panel either way, so the room does not reshuffle under you. */}
+        {!started &&
+          (code ? (
+            <Field label="Room code">
+              <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="font-mono text-3xl font-bold tracking-[0.2em] text-ink">
+                    {code}
+                  </span>
+                  <CopyLink url={joinUrl} />
+                </div>
+                <QrCode value={joinUrl} size={104} />
               </div>
-              <QrCode value={joinUrl} size={104} />
-            </div>
-          </Field>
-        )}
+            </Field>
+          ) : (
+            <Field label="Session">
+              <div className="flex flex-col gap-2">
+                <PrimaryButton block onClick={create} disabled={creating}>
+                  {creating ? "Creating…" : "Create session"}
+                </PrimaryButton>
+                <SecondaryButton block onClick={() => router.push("/join")}>
+                  Join session
+                </SecondaryButton>
+                <p className="text-[11px] leading-relaxed text-ink/45">
+                  Creating one gives you a code and QR to share. Your camera and card
+                  settings work down here in the meantime.
+                </p>
+              </div>
+            </Field>
+          ))}
 
         <Field label="Who's here">
           <div className="flex flex-col gap-2">

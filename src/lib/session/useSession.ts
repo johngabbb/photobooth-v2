@@ -38,6 +38,18 @@ function hasHostClaim(code: string): boolean {
   return sessionStorage.getItem(HOST_CLAIM_PREFIX + code) === "1";
 }
 
+/**
+ * Which seat this device starts in.
+ *
+ * With no code there is no room to be a guest of, so the device takes the host seat.
+ * That is not cosmetic: the stage lays its halves out in `ROLES` order, Pamkin left,
+ * so defaulting to guest put your own camera on the *right* of an empty room — and
+ * then moved it to the left the moment you pressed Create and became host.
+ */
+function initialRole(code: string): SessionRole {
+  return !code || hasHostClaim(code) ? HOST_ROLE : GUEST_ROLE;
+}
+
 export interface Session {
   role: SessionRole;
   isHost: boolean;
@@ -97,14 +109,12 @@ export function useSession(code: string): Session {
   // during the first render. Doing it in an effect would mean an extra render and a
   // frame where the host briefly believes it is a guest.
   const [peerId] = useState(() => crypto.randomUUID());
-  const [role, setRole] = useState<SessionRole>(() =>
-    hasHostClaim(code) ? HOST_ROLE : GUEST_ROLE,
-  );
+  const [role, setRole] = useState<SessionRole>(() => initialRole(code));
   const [peers, setPeers] = useState<Presence[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("idle");
   const [settings, setSettings] = useState<RoomSettings>(DEFAULT_SETTINGS);
   const [clock, setClock] = useState<ClockSync>(() =>
-    hasHostClaim(code) ? HOST_CLOCK : UNSYNCED,
+    initialRole(code) === HOST_ROLE ? HOST_CLOCK : UNSYNCED,
   );
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peerStream, setPeerStream] = useState<MediaStream | null>(null);
@@ -119,7 +129,9 @@ export function useSession(code: string): Session {
   // Callbacks live in refs, not state: they are set by the room component after
   // mount and must be readable from the message handler without re-joining the
   // channel every time the component re-renders.
-  const clockRef = useRef<ClockSync>(hasHostClaim(code) ? HOST_CLOCK : UNSYNCED);
+  const clockRef = useRef<ClockSync>(
+    initialRole(code) === HOST_ROLE ? HOST_CLOCK : UNSYNCED,
+  );
   const captureHandlerRef = useRef<CaptureHandler | null>(null);
   const peerFrameHandlerRef = useRef<PeerFrameHandler | null>(null);
   const resetHandlerRef = useRef<(() => void) | null>(null);
