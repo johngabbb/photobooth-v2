@@ -28,6 +28,39 @@ export const BRAND = {
   paper: "#FFFCF6",
 } as const;
 
+/**
+ * Card stocks that are not in the logo.
+ *
+ * Deliberately separate from BRAND: every value there was measured out of
+ * `photobee.png`, and these were chosen. Folding them in would quietly make that
+ * claim false for whoever reads it next. Mirrored in `globals.css` all the same —
+ * D7 applies to any colour that exists in both places.
+ */
+export const STOCK = {
+  /** A pale strawberry pink. */
+  strawberry: "#FFC0CB",
+  /**
+   * Mint. Picked at the strawberry's lightness rather than by eye, so the two sit
+   * together as a pair rather than one shouting over the other.
+   */
+  mint: "#AAF0D1",
+} as const;
+
+/**
+ * Palettes for the procedural backdrops. Sampled off the reference photographs
+ * rather than the logo, so like STOCK they live outside BRAND.
+ */
+export const SPECIAL = {
+  /** Deepest point of a curtain fold — very nearly black. */
+  curtainShadow: "#240407",
+  /** Where the light catches the velvet. */
+  curtainLight: "#A9121A",
+  /** Film base. Not pure black; stock never is. */
+  filmBase: "#0B0B0C",
+  /** Sprocket holes and the frame edge. */
+  filmHole: "#F5F5F3",
+} as const;
+
 /** Product name, as it appears in the logo wordmark. */
 export const APP_NAME = "pamkin photo bee";
 

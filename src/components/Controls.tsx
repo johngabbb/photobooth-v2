@@ -2,8 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { BORDERS, THEMES, findBorder, findTheme } from "@/lib/layouts";
-import { drawMotif } from "@/lib/render";
-import type { BorderMotif, CardTheme } from "@/lib/types";
+import { drawBackdrop, drawMotif } from "@/lib/render";
+import type { BorderMotif, CardBackdrop, CardTheme } from "@/lib/types";
 
 /**
  * The theme's border ornament, drawn by the card renderer itself so the swatch can
@@ -113,6 +113,49 @@ export function Segmented({
  * ring compiles to a `box-shadow` and each swatch already sets one inline for its
  * inset border, so an inline style beats the class and the ring never renders.
  */
+/**
+ * The theme's backdrop, painted by the card renderer at swatch size.
+ *
+ * Curtain and Film strip both reduce to a near-black `paper`, so a flat swatch would
+ * make them indistinguishable from Ink and from each other. This shows the actual
+ * scene, scaled down.
+ */
+function BackdropSwatch({
+  backdrop,
+  size,
+}: {
+  backdrop: CardBackdrop;
+  size: number;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // The band is the card's side padding as a fraction of its width — roughly a
+    // twenty-fifth — scaled up here so the sprockets stay visible at 36px.
+    drawBackdrop(ctx, backdrop, size, size, size * 0.2);
+  }, [backdrop, size]);
+
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden
+      className="col-start-1 row-start-1 rounded-full"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 export function ThemePicker({
   value,
   onChange,
@@ -142,6 +185,7 @@ export function ThemePicker({
                 boxShadow: `inset 0 0 0 3px ${t.ink}22`,
               }}
             >
+              {t.backdrop && <BackdropSwatch backdrop={t.backdrop} size={36} />}
               {active && (
                 <svg
                   viewBox="0 0 24 24"

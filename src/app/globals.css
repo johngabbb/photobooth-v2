@@ -27,6 +27,10 @@
   --color-cream: #fff4e2; /* page background */
   --color-paper: #fffcf6; /* raised surfaces and card stock */
 
+  /* Card stocks that are not in the logo — mirrors STOCK in src/lib/brand.ts */
+  --color-strawberry: #ffc0cb;
+  --color-mint: #aaf0d1;
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }

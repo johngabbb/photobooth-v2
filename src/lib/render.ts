@@ -1,7 +1,8 @@
-import { BRAND, CARD_FONT, PLACEHOLDER_TINTS } from "./brand";
+import { BRAND, CARD_FONT, PLACEHOLDER_TINTS, SPECIAL } from "./brand";
 import { ROLES } from "./types";
 import type {
   BorderMotif,
+  CardBackdrop,
   Layout,
   Rect,
   RenderInput,
@@ -391,6 +392,345 @@ function drawFooter(ctx: CanvasRenderingContext2D, input: RenderInput) {
 }
 
 /**
+ * Relative fold widths for the curtain, tiled across the card.
+ *
+ * A fixed sequence rather than `Math.random()`, and that is not a style choice: the
+ * preview and the export are two separate `renderCard` calls, so a random pattern
+ * would give you a different curtain in the downloaded file than the one you
+ * approved on screen. Everything here has to be a pure function of its input.
+ */
+const CURTAIN_FOLDS = [1, 0.62, 1.35, 0.8, 1.15, 0.7, 1.5, 0.92, 1.08, 0.75];
+
+/**
+ * Paint a full-card backdrop.
+ *
+ * Takes bare dimensions rather than a Layout so the theme picker can render the
+ * same thing into a 36px swatch — the swatch shows the real backdrop, not an
+ * approximation of it.
+ */
+export function drawBackdrop(
+  ctx: CanvasRenderingContext2D,
+  backdrop: CardBackdrop,
+  w: number,
+  h: number,
+  band: number,
+) {
+  ctx.save();
+
+  if (backdrop === "curtain") {
+    ctx.fillStyle = SPECIAL.curtainShadow;
+    ctx.fillRect(0, 0, w, h);
+
+    // Vertical folds: each band is dark at its edges and lit down the middle.
+    const unit = w / 16;
+    let x = 0;
+    let i = 0;
+    while (x < w) {
+      const bw = unit * CURTAIN_FOLDS[i % CURTAIN_FOLDS.length];
+      const g = ctx.createLinearGradient(x, 0, x + bw, 0);
+      g.addColorStop(0, SPECIAL.curtainShadow);
+      g.addColorStop(0.5, SPECIAL.curtainLight);
+      g.addColorStop(1, SPECIAL.curtainShadow);
+      ctx.fillStyle = g;
+      // +1 closes the hairline seam that rounding leaves between bands.
+      ctx.fillRect(x, 0, bw + 1, h);
+      x += bw;
+      i++;
+    }
+
+    // Stage lighting: the top of a hung curtain falls away into shadow. Kept lighter
+    // than the reference photograph on purpose — only the padding band and the footer
+    // are ever visible past the photos, and at full strength the top band went to
+    // flat black and lost the folds entirely.
+    const shade = ctx.createLinearGradient(0, 0, 0, h);
+    shade.addColorStop(0, "rgba(0,0,0,0.5)");
+    shade.addColorStop(0.4, "rgba(0,0,0,0.16)");
+    shade.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    ctx.fillStyle = SPECIAL.filmBase;
+    ctx.fillRect(0, 0, w, h);
+
+    // Sprockets down both edges, sized off the padding band they sit in and spaced
+    // to an exact division of the height so the run ends flush instead of clipped.
+    const holeW = band * 0.54;
+    const holeH = holeW * 0.78;
+    const radius = holeH * 0.32;
+    const rows = Math.max(2, Math.round(h / (holeH * 2.15)));
+    const pitch = h / rows;
+
+    ctx.fillStyle = SPECIAL.filmHole;
+    for (let r = 0; r < rows; r++) {
+      const y = pitch * (r + 0.5) - holeH / 2;
+      for (const cxEdge of [(band - holeW) / 2, w - band + (band - holeW) / 2]) {
+        roundedPath(ctx, { x: cxEdge, y, w: holeW, h: holeH }, radius);
+        ctx.fill();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Motif artwork colours.
+ *
+ * Not in BRAND or STOCK: these are fur and linework for the character ornaments,
+ * not card or UI colours, and nothing outside this file should reach for them.
+ */
+const FUR = {
+  white: "#FFFFFF",
+  beagleCoat: "#C4823C",
+  beagleEar: "#8B5A2B",
+  huskyCoat: "#6E4A34",
+  huskyPaw: "#C9D2D6",
+  tongue: "#F19AA3",
+} as const;
+
+/**
+ * Fill a path and leave only its *outer* edge outlined.
+ *
+ * Stroke first at double width, then fill on top: the fill covers the inner half of
+ * the stroke, so overlapping shapes in one path merge into a single silhouette with
+ * no seam where they meet. Canvas has no path union, and this is the cheap
+ * equivalent — it is what lets a head and a snout read as one head.
+ */
+function outlined(
+  ctx: CanvasRenderingContext2D,
+  path: () => void,
+  fill: string,
+  lineWidth: number,
+  stroke: string = BRAND.ink,
+) {
+  ctx.beginPath();
+  path();
+  ctx.lineWidth = lineWidth * 2;
+  ctx.strokeStyle = stroke;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.fillStyle = fill;
+  ctx.fill();
+}
+
+/** Snoopy: white body, one black ear, black nose. */
+function drawSnoopyMotif(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+) {
+  const r = s / 2;
+  const lw = Math.max(1, s * 0.055);
+  ctx.save();
+
+  // Ear first, so the head overlaps its root. Pushed well clear of the cranium and
+  // hung low: at border size it is the only thing distinguishing him from any other
+  // white dog, so most of it has to sit outside the head silhouette.
+  outlined(
+    ctx,
+    () => ctx.ellipse(cx + 0.6 * r, cy + 0.3 * r, 0.26 * r, 0.5 * r, 0.25, 0, Math.PI * 2),
+    BRAND.ink,
+    lw,
+  );
+
+  // Cranium and snout in one path — they merge into a single silhouette.
+  outlined(
+    ctx,
+    () => {
+      ctx.ellipse(cx + 0.1 * r, cy - 0.1 * r, 0.58 * r, 0.5 * r, 0, 0, Math.PI * 2);
+      ctx.moveTo(cx - 0.06 * r, cy + 0.2 * r);
+      ctx.ellipse(cx - 0.44 * r, cy + 0.2 * r, 0.4 * r, 0.3 * r, 0, 0, Math.PI * 2);
+    },
+    FUR.white,
+    lw,
+  );
+
+  ctx.fillStyle = BRAND.ink;
+  ctx.beginPath();
+  ctx.ellipse(cx - 0.76 * r, cy + 0.06 * r, 0.16 * r, 0.13 * r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx - 0.02 * r, cy - 0.16 * r, 0.09 * r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/** Moomin: rounded white head, big snout, two small ears. */
+function drawMoominMotif(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+) {
+  const r = s / 2;
+  const lw = Math.max(1, s * 0.05);
+  ctx.save();
+
+  // Ears, then the head over their roots. Short nubs rather than long ovals — taller
+  // and he turns into a rabbit.
+  for (const dir of [-1, 1]) {
+    outlined(
+      ctx,
+      () =>
+        ctx.ellipse(
+          cx + dir * 0.3 * r,
+          cy - 0.52 * r,
+          0.14 * r,
+          0.2 * r,
+          dir * 0.3,
+          0,
+          Math.PI * 2,
+        ),
+      FUR.white,
+      lw,
+    );
+  }
+
+  outlined(
+    ctx,
+    () => {
+      ctx.ellipse(cx + 0.08 * r, cy - 0.08 * r, 0.56 * r, 0.52 * r, 0, 0, Math.PI * 2);
+      ctx.moveTo(cx - 0.05 * r, cy + 0.26 * r);
+      ctx.ellipse(cx - 0.3 * r, cy + 0.26 * r, 0.46 * r, 0.36 * r, 0, 0, Math.PI * 2);
+    },
+    FUR.white,
+    lw,
+  );
+
+  ctx.fillStyle = BRAND.ink;
+  for (const dx of [-0.12, 0.22]) {
+    ctx.beginPath();
+    ctx.ellipse(cx + dx * r, cy - 0.14 * r, 0.075 * r, 0.1 * r, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/** Max, a beagle: tan cap, white blaze, long droopy ears. */
+function drawMaxMotif(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+) {
+  const r = s / 2;
+  const lw = Math.max(1, s * 0.055);
+  ctx.save();
+
+  for (const dir of [-1, 1]) {
+    outlined(
+      ctx,
+      () =>
+        ctx.ellipse(
+          cx + dir * 0.56 * r,
+          cy + 0.18 * r,
+          0.21 * r,
+          0.44 * r,
+          dir * 0.12,
+          0,
+          Math.PI * 2,
+        ),
+      FUR.beagleEar,
+      lw,
+    );
+  }
+
+  const head = () =>
+    ctx.ellipse(cx, cy - 0.02 * r, 0.56 * r, 0.52 * r, 0, 0, Math.PI * 2);
+  outlined(ctx, head, FUR.beagleCoat, lw);
+
+  // Blaze and muzzle, clipped so they cannot spill over the outline.
+  ctx.save();
+  ctx.beginPath();
+  head();
+  ctx.clip();
+  ctx.fillStyle = FUR.white;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 0.1 * r, 0.17 * r, 0.46 * r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 0.3 * r, 0.36 * r, 0.26 * r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = BRAND.ink;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 0.14 * r, 0.12 * r, 0.1 * r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(cx + dir * 0.26 * r, cy - 0.08 * r, 0.085 * r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/** Hunter, a husky: dark coat, white mask, upright pointed ears. */
+function drawHunterMotif(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+) {
+  const r = s / 2;
+  const lw = Math.max(1, s * 0.055);
+  ctx.save();
+
+  // Pointed ears — the silhouette that separates Hunter from Max at border size.
+  for (const dir of [-1, 1]) {
+    outlined(
+      ctx,
+      () => {
+        ctx.moveTo(cx + dir * 0.22 * r, cy - 0.34 * r);
+        ctx.lineTo(cx + dir * 0.46 * r, cy - 0.88 * r);
+        ctx.lineTo(cx + dir * 0.62 * r, cy - 0.22 * r);
+        ctx.closePath();
+      },
+      FUR.huskyCoat,
+      lw,
+    );
+  }
+
+  const head = () =>
+    ctx.ellipse(cx, cy - 0.02 * r, 0.56 * r, 0.5 * r, 0, 0, Math.PI * 2);
+  outlined(ctx, head, FUR.huskyCoat, lw);
+
+  ctx.save();
+  ctx.beginPath();
+  head();
+  ctx.clip();
+  ctx.fillStyle = FUR.white;
+  // Muzzle, plus the wedge that runs up between the eyes.
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 0.26 * r, 0.4 * r, 0.3 * r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 0.55 * r);
+  ctx.lineTo(cx + 0.19 * r, cy + 0.2 * r);
+  ctx.lineTo(cx - 0.19 * r, cy + 0.2 * r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = BRAND.ink;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 0.1 * r, 0.13 * r, 0.11 * r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(cx + dir * 0.28 * r, cy - 0.12 * r, 0.085 * r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/**
  * A small bee, centred on `cx, cy` and fitting a `s`-square box.
  *
  * Deliberately fewer features than the logo: at border size a face and six legs
@@ -516,14 +856,36 @@ export function drawMotif(
   cy: number,
   size: number,
 ) {
-  if (motif === "bee") {
-    drawBeeMotif(ctx, cx, cy, size);
-  } else if (motif === "pamkin") {
-    drawPamkinMotif(ctx, cx, cy, size);
-  } else {
+  if (motif === "both") {
     const s = size * 0.66;
     drawBeeMotif(ctx, cx - size * 0.21, cy - size * 0.04, s);
     drawPamkinMotif(ctx, cx + size * 0.21, cy + size * 0.08, s);
+    return;
+  }
+  drawOneMotif(ctx, motif, cx, cy, size);
+}
+
+/** Dispatch for every motif except `both`, which is a pairing rather than a shape. */
+function drawOneMotif(
+  ctx: CanvasRenderingContext2D,
+  motif: Exclude<BorderMotif, "both">,
+  cx: number,
+  cy: number,
+  size: number,
+) {
+  switch (motif) {
+    case "bee":
+      return drawBeeMotif(ctx, cx, cy, size);
+    case "pamkin":
+      return drawPamkinMotif(ctx, cx, cy, size);
+    case "snoopy":
+      return drawSnoopyMotif(ctx, cx, cy, size);
+    case "moomin":
+      return drawMoominMotif(ctx, cx, cy, size);
+    case "max":
+      return drawMaxMotif(ctx, cx, cy, size);
+    case "hunter":
+      return drawHunterMotif(ctx, cx, cy, size);
   }
 }
 
@@ -552,9 +914,11 @@ function drawCardBorder(
   // `both` alternates along each edge, and each edge counts from its own start so
   // the corners stay consistent rather than depending on push order.
   const place = (x: number, y: number, i: number) => {
-    const bee = border === "bee" || (border === "both" && i % 2 === 0);
-    if (bee) drawBeeMotif(ctx, x, y, size);
-    else drawPamkinMotif(ctx, x, y, size);
+    if (border === "both") {
+      drawOneMotif(ctx, i % 2 === 0 ? "bee" : "pamkin", x, y, size);
+    } else {
+      drawOneMotif(ctx, border, x, y, size);
+    }
   };
 
   const cols = Math.max(2, Math.round((x1 - x0) / step));
@@ -589,6 +953,16 @@ export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
   // Card stock
   ctx.fillStyle = theme.paper;
   ctx.fillRect(0, 0, layout.canvas.w, layout.canvas.h);
+
+  if (theme.backdrop) {
+    drawBackdrop(
+      ctx,
+      theme.backdrop,
+      layout.canvas.w,
+      layout.canvas.h,
+      layout.padding.left,
+    );
+  }
 
   if (border) drawCardBorder(ctx, layout, border);
 

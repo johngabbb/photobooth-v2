@@ -69,7 +69,27 @@ export interface Layout {
  * asset is the bee *on* the pumpkin — the two overlap, so neither can be cropped out
  * of it cleanly. Vectors also stay sharp from a 0.6 preview to a 300 DPI export.
  */
-export type BorderMotif = "bee" | "pamkin" | "both";
+export type BorderMotif =
+  | "bee"
+  | "pamkin"
+  /** Alternates bee and pamkin along each edge. */
+  | "both"
+  | "snoopy"
+  | "moomin"
+  /** A beagle. */
+  | "max"
+  /** A husky. */
+  | "hunter";
+
+/**
+ * A full-card treatment painted behind the photos, instead of a flat `paper` fill.
+ *
+ * Drawn procedurally rather than from a bitmap: an image would have to be loaded,
+ * guarded against not-yet-loaded, and would resample badly between the 0.6 preview
+ * and the 300 DPI export. These derive every dimension from the canvas, so they are
+ * sharp at any scale and stay renderable in Node.
+ */
+export type CardBackdrop = "curtain" | "filmstrip";
 
 /** Colours for a rendered card. Kept separate from Layout so themes and formats compose freely. */
 export interface CardTheme {
@@ -81,6 +101,8 @@ export interface CardTheme {
   ink: string;
   /** Thin rule under each photo half; set to `null` to omit. */
   accent: string | null;
+  /** Painted over `paper` before the photos. Omit for a plain card stock. */
+  backdrop?: CardBackdrop | null;
 }
 
 /**

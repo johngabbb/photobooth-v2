@@ -1,4 +1,4 @@
-import { BRAND } from "./brand";
+import { BRAND, SPECIAL, STOCK, mixHex } from "./brand";
 import type { CardBorder, CardTheme, Layout } from "./types";
 
 /**
@@ -105,12 +105,49 @@ export const THEMES: CardTheme[] = [
     ink: BRAND.ink,
     accent: BRAND.leaf,
   },
+  // Non-logo stocks. Their accent is the paper itself deepened toward ink, rather
+  // than a brand colour: there is no pink in the palette to draw a rule from, and
+  // deriving it guarantees the hairline harmonises with whatever stock it sits on.
+  {
+    id: "strawberry",
+    name: "Strawberry",
+    paper: STOCK.strawberry,
+    ink: BRAND.ink,
+    accent: mixHex(STOCK.strawberry, BRAND.ink, 0.42),
+  },
+  {
+    id: "mint",
+    name: "Mint",
+    paper: STOCK.mint,
+    ink: BRAND.ink,
+    accent: mixHex(STOCK.mint, BRAND.ink, 0.42),
+  },
   {
     id: "ink",
     name: "Ink",
     paper: BRAND.ink,
     ink: BRAND.paper,
     accent: BRAND.honey,
+  },
+  // Special: the whole card is a painted scene rather than a stock. `paper` is still
+  // set as the base the backdrop paints over, and as the fallback if one is ever
+  // rendered without backdrop support.
+  {
+    id: "curtain",
+    name: "Red curtain",
+    paper: SPECIAL.curtainShadow,
+    ink: BRAND.paper,
+    accent: BRAND.honey,
+    backdrop: "curtain",
+  },
+  {
+    id: "filmstrip",
+    name: "Film strip",
+    paper: SPECIAL.filmBase,
+    ink: SPECIAL.filmHole,
+    // No rule between frames: on film the black gap between frames *is* the divider.
+    accent: null,
+    backdrop: "filmstrip",
   },
 ];
 
@@ -125,6 +162,10 @@ export const BORDERS: CardBorder[] = [
   { id: "bee", name: "Bees", motif: "bee" },
   { id: "pamkin", name: "Pamkins", motif: "pamkin" },
   { id: "both", name: "Bees & pamkins", motif: "both" },
+  { id: "snoopy", name: "Snoopy", motif: "snoopy" },
+  { id: "moomin", name: "Moomin", motif: "moomin" },
+  { id: "max", name: "Max", motif: "max" },
+  { id: "hunter", name: "Hunter", motif: "hunter" },
 ];
 
 export function findBorder(id: string): CardBorder {
