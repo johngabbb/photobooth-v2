@@ -215,6 +215,38 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Identifies one photograph on a card: which slot, and whose half of it. */
+export function halfKey(slot: number, role: Role): string {
+  return `${slot}:${role}`;
+}
+
+/**
+ * Which photograph, if any, sits under a point — in *design pixels*, so callers
+ * convert from client coordinates once and never need to know the render scale.
+ *
+ * Derived from the same `slotRects` / `halfRects` that draw the card, so a hit can
+ * never disagree with what is on screen.
+ */
+export function hitHalf(
+  layout: Layout,
+  x: number,
+  y: number,
+): { slot: number; role: Role; rect: Rect } | null {
+  const roles = rolesFor(layout);
+
+  const slots = slotRects(layout);
+  for (let i = 0; i < slots.length; i++) {
+    const halves = halfRects(slots[i], layout.split, layout.splitGap);
+    for (let h = 0; h < halves.length; h++) {
+      const r = halves[h];
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+        return { slot: i, role: roles[h], rect: r };
+      }
+    }
+  }
+  return null;
+}
+
 /** Which roles a layout expects per slot, in draw order. */
 function rolesFor(layout: Layout): Role[] {
   return layout.split === "none" ? [ROLES[0]] : [...ROLES];
@@ -983,6 +1015,7 @@ function drawCardBorder(
  */
 export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
   const { layout, theme, shots, mirror, scale, border, filter } = input;
+  const overrides = input.mirrorOverrides;
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1018,7 +1051,10 @@ export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
         // cleared straight after, so the stock, ornaments, and footer stay untouched.
         // `drawCover` save/restores internally, which preserves this value.
         if (filter) ctx.filter = filter;
-        drawCover(ctx, src, half, { radius: layout.radius, mirror });
+        drawCover(ctx, src, half, {
+          radius: layout.radius,
+          mirror: overrides?.[halfKey(i, roles[h])] ?? mirror,
+        });
         if (filter) ctx.filter = "none";
       } else {
         drawEmptyHalf(

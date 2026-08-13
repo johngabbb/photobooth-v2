@@ -17,6 +17,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useCamera } from "@/lib/camera";
 import { useCreateSession } from "@/lib/session/useCreateSession";
+import { stageCard } from "@/lib/handoff";
 import { XL_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 import { captureFrame, emptyShots } from "@/lib/capture";
 import { cardFilename, downloadCard } from "@/lib/download";
@@ -75,7 +76,10 @@ export function Room({ code }: { code: string | null }) {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [flash, setFlash] = useState(false);
   const [caption, setCaption] = useState(todayLabel);
-  const [mirror, setMirror] = useState(true);
+  // Always mirrored in the room: the stage shows you a mirror while you pose, so the
+  // card matching it is the least surprising result. Un-mirroring is a studio job —
+  // it is an edit to a finished photo, not a capture setting.
+  const mirror = true;
   const [busy, setBusy] = useState(false);
 
   const shotsRef = useRef<Shot[]>(shots);
@@ -261,6 +265,20 @@ export function Room({ code }: { code: string | null }) {
     () => ({ ...base, scale: PREVIEW_SCALE }),
     [base],
   );
+
+  function openInStudio() {
+    stageCard({
+      shots,
+      mode: layout.mode,
+      count,
+      themeId: settings.themeId,
+      borderId: settings.borderId,
+      filterId: settings.filterId,
+      caption,
+      mirror,
+    });
+    router.push(code ? `/studio/${code}` : "/studio");
+  }
 
   async function save() {
     setBusy(true);
@@ -458,15 +476,6 @@ export function Room({ code }: { code: string | null }) {
               />
             </Field>
 
-            <label className="flex items-center gap-3 text-sm text-ink/80">
-              <input
-                type="checkbox"
-                checked={mirror}
-                onChange={(e) => setMirror(e.target.checked)}
-                className="h-4 w-4 accent-pumpkin"
-              />
-              Mirror photos
-            </label>
 
             {isHost && (
               <Field label="Retake">
@@ -488,6 +497,11 @@ export function Room({ code }: { code: string | null }) {
             <PrimaryButton onClick={save} disabled={busy}>
               {busy ? "Rendering…" : "Download PNG"}
             </PrimaryButton>
+            {/* Carries the photographs themselves, not a copy — the studio draws the
+                same canvases through the same renderer, so nothing is re-encoded and
+                the card cannot change on the way over. Available to both people:
+                each holds their own version of the card. */}
+            <SecondaryButton onClick={openInStudio}>Edit in studio</SecondaryButton>
             {isHost && <SecondaryButton onClick={reset}>Start over</SecondaryButton>}
             {!isHost && (
               <p className="text-[11px] leading-relaxed text-ink/45">

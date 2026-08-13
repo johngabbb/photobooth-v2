@@ -156,8 +156,16 @@ export interface RenderInput {
   /**
    * Mirror each half horizontally. Selfie previews are mirrored because people
    * expect their own reflection; the printed output usually should not be.
+   *
+   * This is the *default* for every photo on the card.
    */
   mirror: boolean;
+  /**
+   * Per-photo exceptions to `mirror`, keyed by `halfKey(slot, role)`. A missing key
+   * means the photo follows the default, so the common case stays a single boolean
+   * and nothing has to enumerate photos that were never touched.
+   */
+  mirrorOverrides?: Record<string, boolean>;
   /**
    * The bee-on-pumpkin mark, drawn in the footer beside the title. Optional so the
    * renderer stays usable before the image has loaded — the card simply centres its
