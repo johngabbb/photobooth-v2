@@ -33,14 +33,23 @@ export interface Presence {
   joinedAt: number;
 }
 
-/** Room settings. Host-authoritative — the guest renders these but never writes them. */
+/** Room settings. Either device may change these; the countdown stays host-only. */
 export interface RoomSettings {
   count: number;
   themeId: string;
+  /** Border ornament, chosen independently of the colour theme. */
+  borderId: string;
+  /** Look applied to the photographs. */
+  filterId: string;
 }
 
 export type SessionMessage =
-  | { type: "settings"; from: SessionRole; settings: RoomSettings }
+  /**
+   * A settings change. Carries only the changed keys, because either device may
+   * now write: two people editing different fields at the same moment both keep
+   * their change, where a whole-object message would let the later one win.
+   */
+  | { type: "settings"; from: SessionRole; patch: Partial<RoomSettings> }
   /** Sent by a joiner so the host re-broadcasts current settings. */
   | { type: "hello"; from: SessionRole }
   /**

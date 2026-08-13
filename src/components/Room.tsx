@@ -8,14 +8,20 @@ import {
   Field,
   PrimaryButton,
   SecondaryButton,
+  BorderPicker,
+  FilterPicker,
   Segmented,
   ThemePicker,
   todayLabel,
 } from "@/components/Controls";
+import { useRouter } from "next/navigation";
 import { useCamera } from "@/lib/camera";
+import { useCreateSession } from "@/lib/session/useCreateSession";
+import { stageCard } from "@/lib/handoff";
+import { XL_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 import { captureFrame, emptyShots } from "@/lib/capture";
 import { cardFilename, downloadCard } from "@/lib/download";
-import { PHOTO_COUNTS, findTheme, layoutFor } from "@/lib/layouts";
+import { PHOTO_COUNTS, findBorder, findFilter, findTheme, layoutFor } from "@/lib/layouts";
 import { slotRects } from "@/lib/render";
 import { useBrandMark } from "@/lib/useBrandMark";
 import { useSession } from "@/lib/session/useSession";
@@ -44,13 +50,17 @@ const PREVIEW_SCALE = 0.6;
 
 const ROLE_LABEL: Record<Role, string> = { pamkin: "Pamkin", bee: "Bee" };
 
-export function Room({ code }: { code: string }) {
-  const session = useSession(code);
+export function Room({ code }: { code: string | null }) {
+  // `""` makes useSession skip joining entirely — no channel, no presence, no clock.
+  // That is what lets `/room` render the whole booth before a session exists.
+  const session = useSession(code ?? "");
   const camera = useCamera();
   const mark = useBrandMark();
+  const router = useRouter();
 
   const [origin] = useState(() => window.location.origin);
-  const joinUrl = `${origin}/room/${code}`;
+  const joinUrl = code ? `${origin}/room/${code}` : "";
+  const { create, creating } = useCreateSession();
 
   const [started, setStarted] = useState(false);
   /**
@@ -66,7 +76,10 @@ export function Room({ code }: { code: string }) {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [flash, setFlash] = useState(false);
   const [caption, setCaption] = useState(todayLabel);
-  const [mirror, setMirror] = useState(true);
+  // Always mirrored in the room: the stage shows you a mirror while you pose, so the
+  // card matching it is the least surprising result. Un-mirroring is a studio job —
+  // it is an edit to a finished photo, not a capture setting.
+  const mirror = true;
   const [busy, setBusy] = useState(false);
 
   const shotsRef = useRef<Shot[]>(shots);
@@ -90,6 +103,14 @@ export function Room({ code }: { code: string }) {
   const count = settings.count;
   const layout = useMemo(() => layoutFor("duo", count), [count]);
   const theme = useMemo(() => findTheme(settings.themeId), [settings.themeId]);
+  const border = useMemo(
+    () => findBorder(settings.borderId).motif,
+    [settings.borderId],
+  );
+  const filter = useMemo(
+    () => findFilter(settings.filterId).css,
+    [settings.filterId],
+  );
 
   // The stage shows the whole slot now — both halves side by side — so the preview
   // is a live rehearsal of what the card will hold.
@@ -234,14 +255,30 @@ export function Room({ code }: { code: string }) {
       shots,
       mirror,
       logo: mark,
+      border,
+      filter,
     }),
-    [layout, theme, caption, shots, mirror, mark],
+    [layout, theme, caption, shots, mirror, mark, border, filter],
   );
 
   const preview: RenderInput = useMemo(
     () => ({ ...base, scale: PREVIEW_SCALE }),
     [base],
   );
+
+  function openInStudio() {
+    stageCard({
+      shots,
+      mode: layout.mode,
+      count,
+      themeId: settings.themeId,
+      borderId: settings.borderId,
+      filterId: settings.filterId,
+      caption,
+      mirror,
+    });
+    router.push(code ? `/studio/${code}` : "/studio");
+  }
 
   async function save() {
     setBusy(true);
@@ -257,6 +294,11 @@ export function Room({ code }: { code: string }) {
   // A queued capture always wins the stage, so a retake shows the camera and its
   // countdown instead of leaving you photographed blind behind the finished card.
   const showCard = complete && !pending;
+  // From `xl` the card has a column of its own, so the stage never swaps — you keep
+  // watching the cameras while the finished card sits beside them. Narrower than that
+  // there is no room for both, and the stage still hands over when the card is done.
+  const wide = useMediaQuery(XL_QUERY);
+  const cardInStage = showCard && !wide;
   // The scheduler sets `remaining` to null once nothing is queued, so this reads
   // "every shutter has fired, but not every half has arrived" without touching a ref
   // during render.
@@ -274,10 +316,13 @@ export function Room({ code }: { code: string }) {
     // On a phone the two rows must be given an explicit share. Left to auto sizing the
     // controls' content wins and squeezes the stage to ~150px — unusable for framing a
     // face. 3fr/2fr keeps the camera dominant and lets the controls scroll.
-    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-6 lg:px-6 lg:py-5">
-      <div className="flex min-h-0 flex-col items-center justify-center gap-3">
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-8 lg:px-6 lg:py-5 xl:max-w-none xl:grid-cols-[20rem_1fr_22rem] xl:gap-10 2xl:grid-cols-[22rem_1fr_30rem] 2xl:gap-14">
+      {/* Camera first in the DOM because on a phone it must take row 1, the 3fr one.
+          The `xl:order-*` classes below move it to the middle column on wide screens
+          without disturbing that. */}
+      <div className="flex min-h-0 flex-col items-center justify-center gap-3 xl:order-2">
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
-          {showCard ? (
+          {cardInStage ? (
             <CardCanvas
               input={preview}
               className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
@@ -298,16 +343,28 @@ export function Room({ code }: { code: string }) {
           )}
         </div>
         <p className="shrink-0 font-mono text-[11px] text-ink/50">
-          {showCard
+          {cardInStage
             ? `${layout.physical} · ${layout.canvas.w}×${layout.canvas.h}px · 300 DPI`
             : started
               ? `Photo ${Math.min(filled + 1, count)} of ${count}`
               : `You are ${ROLE_LABEL[role]} · live preview of one ${layout.physical} slot`}
         </p>
+
+        {/* Anchored under the cameras rather than in the controls pane, which
+            scrolls — the one control you reach for should never be scrolled off.
+            `shrink-0` keeps it at full height and lets the stage above absorb the
+            space instead. */}
+        {code && isHost && !started && (
+          <div className="shrink-0">
+            <PrimaryButton onClick={startSession} disabled={!canStart}>
+              {canStart ? `Take ${count} photos together` : "Waiting…"}
+            </PrimaryButton>
+          </div>
+        )}
       </div>
 
-      <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto">
-        {session.transportKind === "local" && (
+      <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1 xl:order-1">
+        {code && session.transportKind === "local" && (
           <div className="rounded-xl border border-honey/60 bg-honey/15 p-3">
             <p className="text-xs font-semibold text-ink/80">Same-browser mode</p>
             <p className="mt-1 text-[11px] leading-relaxed text-ink/60">
@@ -318,19 +375,38 @@ export function Room({ code }: { code: string }) {
           </div>
         )}
 
-        {!started && (
-          <Field label="Room code">
-            <div className="flex items-start gap-3">
-              <div className="flex flex-col gap-1">
-                <span className="font-mono text-3xl font-bold tracking-[0.2em] text-ink">
-                  {code}
-                </span>
-                <CopyLink url={joinUrl} />
+        {/* Before a session exists this slot offers the two ways to get one; once
+            there is a code it becomes the code and QR to share. Same position in the
+            panel either way, so the room does not reshuffle under you. */}
+        {!started &&
+          (code ? (
+            <Field label="Room code">
+              <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="font-mono text-3xl font-bold tracking-[0.2em] text-ink">
+                    {code}
+                  </span>
+                  <CopyLink url={joinUrl} />
+                </div>
+                <QrCode value={joinUrl} size={104} />
               </div>
-              <QrCode value={joinUrl} size={104} />
-            </div>
-          </Field>
-        )}
+            </Field>
+          ) : (
+            <Field label="Session">
+              <div className="flex flex-col gap-2">
+                <PrimaryButton block onClick={create} disabled={creating}>
+                  {creating ? "Creating…" : "Create session"}
+                </PrimaryButton>
+                <SecondaryButton block onClick={() => router.push("/join")}>
+                  Join session
+                </SecondaryButton>
+                <p className="text-[11px] leading-relaxed text-ink/45">
+                  Creating one gives you a code and QR to share. Your camera and card
+                  settings work down here in the meantime.
+                </p>
+              </div>
+            </Field>
+          ))}
 
         <Field label="Who's here">
           <div className="flex flex-col gap-2">
@@ -353,7 +429,9 @@ export function Room({ code }: { code: string }) {
 
         {!started && (
           <>
-            <Field label={isHost ? "Photos" : "Photos (set by host)"}>
+            {/* Both people can change these — every edit is broadcast as a patch
+                and merged on both devices. Only the countdown stays host-only. */}
+            <Field label="Photos">
               <Segmented
                 options={PHOTO_COUNTS.map((n) => ({
                   value: String(n),
@@ -361,17 +439,29 @@ export function Room({ code }: { code: string }) {
                 }))}
                 value={String(count)}
                 onChange={(v) => session.updateSettings({ count: Number(v) })}
-                disabled={!isHost}
               />
             </Field>
 
-            <Field label={isHost ? "Theme" : "Theme (set by host)"}>
-              <div className={isHost ? "" : "pointer-events-none opacity-60"}>
-                <ThemePicker
-                  value={settings.themeId}
-                  onChange={(id) => session.updateSettings({ themeId: id })}
-                />
-              </div>
+            <Field label="Theme">
+              <ThemePicker
+                value={settings.themeId}
+                onChange={(id) => session.updateSettings({ themeId: id })}
+              />
+            </Field>
+
+            <Field label="Border">
+              <BorderPicker
+                value={settings.borderId}
+                onChange={(id) => session.updateSettings({ borderId: id })}
+                theme={theme}
+              />
+            </Field>
+
+            <Field label="Filter">
+              <FilterPicker
+                value={settings.filterId}
+                onChange={(id) => session.updateSettings({ filterId: id })}
+              />
             </Field>
           </>
         )}
@@ -386,15 +476,6 @@ export function Room({ code }: { code: string }) {
               />
             </Field>
 
-            <label className="flex items-center gap-3 text-sm text-ink/80">
-              <input
-                type="checkbox"
-                checked={mirror}
-                onChange={(e) => setMirror(e.target.checked)}
-                className="h-4 w-4 accent-pumpkin"
-              />
-              Mirror photos
-            </label>
 
             {isHost && (
               <Field label="Retake">
@@ -416,6 +497,11 @@ export function Room({ code }: { code: string }) {
             <PrimaryButton onClick={save} disabled={busy}>
               {busy ? "Rendering…" : "Download PNG"}
             </PrimaryButton>
+            {/* Carries the photographs themselves, not a copy — the studio draws the
+                same canvases through the same renderer, so nothing is re-encoded and
+                the card cannot change on the way over. Available to both people:
+                each holds their own version of the card. */}
+            <SecondaryButton onClick={openInStudio}>Edit in studio</SecondaryButton>
             {isHost && <SecondaryButton onClick={reset}>Start over</SecondaryButton>}
             {!isHost && (
               <p className="text-[11px] leading-relaxed text-ink/45">
@@ -432,18 +518,46 @@ export function Room({ code }: { code: string }) {
             bothReady={bothReady}
             peerSynced={Boolean(peer?.clockSynced)}
             isHost={isHost}
-            canStart={canStart}
-            count={count}
-            onStart={startSession}
             rttMs={session.clock.rttMs}
             synced={session.clock.synced}
           />
         )}
+
+        {/* Below `xl` the card rides at the foot of this pane, which already scrolls
+            (D10 — the page itself never does). Scroll past the controls and the
+            template is there, filling in as shots land. Suppressed once the stage has
+            taken the card over, so it is never on screen twice. */}
+        {!wide && !cardInStage && (
+          <div className="flex shrink-0 flex-col items-center gap-2 pb-1">
+            <span className="text-xs font-semibold uppercase tracking-widest text-ink/45">
+              Your card
+            </span>
+            <CardCanvas
+              input={preview}
+              className="max-h-[60vh] max-w-full rounded-xl shadow-lg shadow-ink/15 ring-1 ring-ink/10"
+            />
+          </div>
+        )}
       </aside>
+
+      {/* The card's own column, from `xl` only. Below that it is not rendered at all,
+          which keeps the aside as the second grid item on a phone. */}
+      {wide && (
+        <div className="flex min-h-0 flex-col items-center justify-center gap-3 xl:order-3">
+          <CardCanvas
+            input={preview}
+            className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
+          />
+          <p className="shrink-0 font-mono text-[11px] text-ink/50">
+            {layout.physical} · {filled}/{count} filled
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
+/** Status only — the start button lives under the cameras, not in this pane. */
 function StatusPanel({
   started,
   waitingForPeer,
@@ -451,9 +565,6 @@ function StatusPanel({
   bothReady,
   peerSynced,
   isHost,
-  canStart,
-  count,
-  onStart,
   rttMs,
   synced,
 }: {
@@ -463,9 +574,6 @@ function StatusPanel({
   bothReady: boolean;
   peerSynced: boolean;
   isHost: boolean;
-  canStart: boolean;
-  count: number;
-  onStart: () => void;
   rttMs: number;
   synced: boolean;
 }) {
@@ -513,12 +621,6 @@ function StatusPanel({
           </p>
         )}
       </div>
-
-      {isHost && (
-        <PrimaryButton onClick={onStart} disabled={!canStart}>
-          {canStart ? `Take ${count} photos together` : "Waiting…"}
-        </PrimaryButton>
-      )}
     </>
   );
 }

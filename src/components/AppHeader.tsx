@@ -34,7 +34,10 @@ export function AppHeader({
       </Link>
 
       <nav className="ml-auto flex items-center gap-1 text-xs">
-        <NavLink href="/" label="Home" active={current === "home" || current === "room"} />
+        <NavLink href="/" label="Home" active={current === "home"} />
+        {/* Points at `/room`, never at a code: the nav is on every page, and a link
+            that minted a room on each click would litter abandoned codes. */}
+        <NavLink href="/room" label="Room" active={current === "room"} />
         <NavLink href="/solo" label="Solo" active={current === "solo"} />
         <NavLink href="/studio" label="Studio" active={current === "studio"} />
       </nav>

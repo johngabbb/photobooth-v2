@@ -1,4 +1,5 @@
-import { CARD_FONT } from "./brand";
+import { BRAND, CARD_FONT, PLACEHOLDER_TINTS } from "./brand";
+import { withAlpha } from "./render";
 import { ROLES } from "./types";
 import type { Role, Shot } from "./types";
 
@@ -12,11 +13,6 @@ import type { Role, Shot } from "./types";
  * so the crop math gets exercised honestly rather than against convenient squares.
  */
 
-const PALETTES: Record<Role, [string, string]> = {
-  pamkin: ["#F2792F", "#C4442A"],
-  bee: ["#F7C948", "#E08A1E"],
-};
-
 const SOURCE = { w: 640, h: 480 };
 
 export function placeholderPhoto(role: Role, index: number): HTMLCanvasElement {
@@ -27,15 +23,16 @@ export function placeholderPhoto(role: Role, index: number): HTMLCanvasElement {
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
 
-  const [from, to] = PALETTES[role];
+  const tint = PLACEHOLDER_TINTS[role];
   const grad = ctx.createLinearGradient(0, 0, SOURCE.w, SOURCE.h);
-  grad.addColorStop(0, from);
-  grad.addColorStop(1, to);
+  grad.addColorStop(0, tint.from);
+  grad.addColorStop(1, tint.to);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, SOURCE.w, SOURCE.h);
 
-  // Concentric arcs, off-centre, so cropping is visibly doing something.
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  // Concentric arcs, off-centre, so cropping is visibly doing something. Role colour
+  // rather than white — the fill is too pale for white to register.
+  ctx.strokeStyle = withAlpha(tint.line, 0.30);
   ctx.lineWidth = 14;
   for (let r = 60; r < 420; r += 70) {
     ctx.beginPath();
@@ -43,14 +40,15 @@ export function placeholderPhoto(role: Role, index: number): HTMLCanvasElement {
     ctx.stroke();
   }
 
-  // Shot number, large enough to survive a hard crop.
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  // Shot number, large enough to survive a hard crop. Ink, for the same reason.
+  ctx.fillStyle = withAlpha(BRAND.ink, 0.45);
   ctx.font = `700 190px ${CARD_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(String(index + 1), SOURCE.w / 2, SOURCE.h * 0.42);
 
   ctx.font = `600 42px ${CARD_FONT}`;
+  ctx.fillStyle = withAlpha(BRAND.ink, 0.38);
   ctx.fillText(role.toUpperCase(), SOURCE.w / 2, SOURCE.h * 0.85);
 
   return canvas;

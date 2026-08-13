@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { THEMES } from "../layouts";
+import { BORDERS, FILTERS, THEMES } from "../layouts";
 import {
   HOST_CLOCK,
   PING_COUNT,
@@ -38,6 +38,18 @@ function hasHostClaim(code: string): boolean {
   return sessionStorage.getItem(HOST_CLAIM_PREFIX + code) === "1";
 }
 
+/**
+ * Which seat this device starts in.
+ *
+ * With no code there is no room to be a guest of, so the device takes the host seat.
+ * That is not cosmetic: the stage lays its halves out in `ROLES` order, Pamkin left,
+ * so defaulting to guest put your own camera on the *right* of an empty room — and
+ * then moved it to the left the moment you pressed Create and became host.
+ */
+function initialRole(code: string): SessionRole {
+  return !code || hasHostClaim(code) ? HOST_ROLE : GUEST_ROLE;
+}
+
 export interface Session {
   role: SessionRole;
   isHost: boolean;
@@ -48,7 +60,7 @@ export interface Session {
   connection: ConnectionState;
   transportKind: Transport["kind"];
   settings: RoomSettings;
-  /** No-op for the guest: settings are host-authoritative. */
+  /** Either device may call this; the change is merged on both. */
   updateSettings: (patch: Partial<RoomSettings>) => void;
   setCameraReady: (ready: boolean) => void;
 
@@ -84,7 +96,12 @@ export type PeerFrameHandler = (
   image: HTMLImageElement,
 ) => void;
 
-const DEFAULT_SETTINGS: RoomSettings = { count: 4, themeId: THEMES[0].id };
+const DEFAULT_SETTINGS: RoomSettings = {
+  count: 4,
+  themeId: THEMES[0].id,
+  borderId: BORDERS[0].id,
+  filterId: FILTERS[0].id,
+};
 
 export function useSession(code: string): Session {
   // Derived at mount, not in an effect: this hook only ever runs client-side (the
@@ -92,14 +109,12 @@ export function useSession(code: string): Session {
   // during the first render. Doing it in an effect would mean an extra render and a
   // frame where the host briefly believes it is a guest.
   const [peerId] = useState(() => crypto.randomUUID());
-  const [role, setRole] = useState<SessionRole>(() =>
-    hasHostClaim(code) ? HOST_ROLE : GUEST_ROLE,
-  );
+  const [role, setRole] = useState<SessionRole>(() => initialRole(code));
   const [peers, setPeers] = useState<Presence[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("idle");
   const [settings, setSettings] = useState<RoomSettings>(DEFAULT_SETTINGS);
   const [clock, setClock] = useState<ClockSync>(() =>
-    hasHostClaim(code) ? HOST_CLOCK : UNSYNCED,
+    initialRole(code) === HOST_ROLE ? HOST_CLOCK : UNSYNCED,
   );
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peerStream, setPeerStream] = useState<MediaStream | null>(null);
@@ -114,7 +129,9 @@ export function useSession(code: string): Session {
   // Callbacks live in refs, not state: they are set by the room component after
   // mount and must be readable from the message handler without re-joining the
   // channel every time the component re-renders.
-  const clockRef = useRef<ClockSync>(hasHostClaim(code) ? HOST_CLOCK : UNSYNCED);
+  const clockRef = useRef<ClockSync>(
+    initialRole(code) === HOST_ROLE ? HOST_CLOCK : UNSYNCED,
+  );
   const captureHandlerRef = useRef<CaptureHandler | null>(null);
   const peerFrameHandlerRef = useRef<PeerFrameHandler | null>(null);
   const resetHandlerRef = useRef<(() => void) | null>(null);
@@ -195,20 +212,24 @@ export function useSession(code: string): Session {
         if (cancelled) return;
 
         if (msg.type === "settings") {
-          // The host is the writer; ignore anything that would overwrite its own state.
-          if (roleRef.current !== HOST_ROLE) {
-            settingsRef.current = msg.settings;
-            setSettings(msg.settings);
-          }
+          // Merged, not adopted: the sender only tells us what it changed, so a
+          // simultaneous edit to a different field survives instead of being
+          // overwritten by whichever message happened to land second.
+          const next = { ...settingsRef.current, ...msg.patch };
+          settingsRef.current = next;
+          setSettings(next);
           return;
         }
 
-        // Someone just arrived and does not know the settings yet.
-        if (msg.type === "hello" && roleRef.current === HOST_ROLE) {
+        // Someone just arrived and does not know the settings yet. Answered by
+        // whoever is *not* the sender rather than by the host specifically — that
+        // way a host who reloads is caught up by the guest, instead of silently
+        // resetting the room to defaults.
+        if (msg.type === "hello" && msg.from !== roleRef.current) {
           void transport.send({
             type: "settings",
-            from: HOST_ROLE,
-            settings: settingsRef.current,
+            from: roleRef.current,
+            patch: settingsRef.current,
           });
           return;
         }
@@ -430,16 +451,16 @@ export function useSession(code: string): Session {
 
 
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
-    if (roleRef.current !== HOST_ROLE) return;
-
     const next = { ...settingsRef.current, ...patch };
     settingsRef.current = next;
     setSettings(next);
 
+    // Broadcast the patch alone, never the merged object — that is what makes
+    // concurrent edits to different fields compose instead of clobber.
     void transportRef.current?.send({
       type: "settings",
-      from: HOST_ROLE,
-      settings: next,
+      from: roleRef.current,
+      patch,
     });
   }, []);
 

@@ -12,6 +12,7 @@ const Room = dynamic(() => import("./Room").then((m) => m.Room), {
   ),
 });
 
-export default function RoomMount({ code }: { code: string }) {
+/** `code` is null on `/room`: the room renders, but with no session joined yet. */
+export default function RoomMount({ code }: { code: string | null }) {
   return <Room code={code} />;
 }

@@ -9,7 +9,7 @@ export default function StudioPage() {
   return (
     <main className="flex h-full min-h-0 flex-col">
       <AppHeader current="studio" />
-      <CardStudioMount />
+      <CardStudioMount code={null} />
     </main>
   );
 }

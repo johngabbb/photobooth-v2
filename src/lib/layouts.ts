@@ -1,5 +1,5 @@
-import { BRAND } from "./brand";
-import type { CardTheme, Layout } from "./types";
+import { BRAND, SPECIAL, STOCK, mixHex } from "./brand";
+import type { CardBorder, CardFilter, CardTheme, Layout } from "./types";
 
 /**
  * Card formats, in design pixels at 300 DPI.
@@ -105,6 +105,23 @@ export const THEMES: CardTheme[] = [
     ink: BRAND.ink,
     accent: BRAND.leaf,
   },
+  // Non-logo stocks. Their accent is the paper itself deepened toward ink, rather
+  // than a brand colour: there is no pink in the palette to draw a rule from, and
+  // deriving it guarantees the hairline harmonises with whatever stock it sits on.
+  {
+    id: "strawberry",
+    name: "Strawberry",
+    paper: STOCK.strawberry,
+    ink: BRAND.ink,
+    accent: mixHex(STOCK.strawberry, BRAND.ink, 0.42),
+  },
+  {
+    id: "mint",
+    name: "Mint",
+    paper: STOCK.mint,
+    ink: BRAND.ink,
+    accent: mixHex(STOCK.mint, BRAND.ink, 0.42),
+  },
   {
     id: "ink",
     name: "Ink",
@@ -112,7 +129,71 @@ export const THEMES: CardTheme[] = [
     ink: BRAND.paper,
     accent: BRAND.honey,
   },
+  // Special: the whole card is a painted scene rather than a stock. `paper` is still
+  // set as the base the backdrop paints over, and as the fallback if one is ever
+  // rendered without backdrop support.
+  {
+    id: "curtain",
+    name: "Red curtain",
+    paper: SPECIAL.curtainShadow,
+    ink: BRAND.paper,
+    accent: BRAND.honey,
+    backdrop: "curtain",
+  },
+  {
+    id: "filmstrip",
+    name: "Film strip",
+    paper: SPECIAL.filmBase,
+    ink: SPECIAL.filmHole,
+    // No rule between frames: on film the black gap between frames *is* the divider.
+    accent: null,
+    backdrop: "filmstrip",
+  },
 ];
+
+/**
+ * Border ornaments, chosen on top of whichever colour theme is active.
+ *
+ * Data, like everything else here — adding a motif is an entry in this list plus a
+ * draw case in `render.ts`, never a branch in the pickers.
+ */
+export const BORDERS: CardBorder[] = [
+  { id: "plain", name: "Plain", motif: null },
+  { id: "bee", name: "Bees", motif: "bee" },
+  { id: "pamkin", name: "Pamkins", motif: "pamkin" },
+  { id: "both", name: "Bees & pamkins", motif: "both" },
+  { id: "snoopy", name: "Snoopy", motif: "snoopy" },
+  { id: "moomin", name: "Moomin", motif: "moomin" },
+  { id: "max", name: "Max", motif: "max" },
+  { id: "hunter", name: "Hunter", motif: "hunter" },
+];
+
+/**
+ * Looks applied to the photographs.
+ *
+ * Values are canvas/CSS filter strings, so the same entry drives the exported card
+ * and could drive a live preview unchanged. Kept mild on purpose: these sit next to
+ * a face, and aggressive contrast on skin looks worse the larger the print gets.
+ */
+export const FILTERS: CardFilter[] = [
+  { id: "original", name: "Original", css: null },
+  { id: "vivid", name: "Vivid", css: "saturate(1.45) contrast(1.12)" },
+  { id: "classic", name: "Classic", css: "sepia(0.42) saturate(0.9) contrast(1.06)" },
+  { id: "grayscale", name: "Grayscale", css: "grayscale(1) contrast(1.08)" },
+  {
+    id: "faded",
+    name: "Faded",
+    css: "saturate(0.72) contrast(0.88) brightness(1.08)",
+  },
+];
+
+export function findFilter(id: string): CardFilter {
+  return FILTERS.find((f) => f.id === id) ?? FILTERS[0];
+}
+
+export function findBorder(id: string): CardBorder {
+  return BORDERS.find((b) => b.id === id) ?? BORDERS[0];
+}
 
 export function findTheme(id: string): CardTheme {
   return THEMES.find((t) => t.id === id) ?? THEMES[0];

@@ -102,7 +102,8 @@ it is genuinely the only option, and where the signaling channel already exists.
 
 ## D6 — Host is authoritative
 
-**Status:** decided
+**Status:** superseded in part by D28 — settings are now shared; countdown timing
+remains host-only
 
 One writer for room settings and countdown timing. The guest mirrors state and may
 only signal readiness or request a retake.
@@ -587,5 +588,44 @@ time — which would make the renderer DOM-dependent and break D2's portability.
 
 Mitigation is a comment in both files. If it starts biting, the fix is to generate the
 CSS block from the TypeScript at build time, not to make the renderer read the DOM.
+
+---
+
+## D28 — Both people edit settings; only the host fires the shutter
+
+**Status:** decided, supersedes half of D6
+
+Either device can change photo count, theme, border, and filter. Starting the
+countdown, retaking a shot, and starting over stay host-only.
+
+D6 refused this to avoid reconciling concurrent edits. That reasoning holds for the
+*countdown* — two writers there means a double-started session and two conflicting
+`captureAt` values, which is exactly the distributed-systems work worth avoiding.
+It does not hold for settings, where the cost turned out to be one line: broadcast
+the **patch** rather than the merged object.
+
+```ts
+// clobbers a simultaneous edit to a different field
+send({ type: "settings", settings: { ...current, ...patch } })
+
+// composes with it
+send({ type: "settings", patch })
+```
+
+Receivers merge into their own copy. Two people changing the theme and the filter in
+the same second both keep their change; only a genuine conflict — the same field,
+same moment — resolves last-write-wins, and both then see the same value because the
+loser's device re-renders from the merged state.
+
+`hello` is now answered by whoever is *not* the sender rather than by the host, which
+also fixes a pre-existing wart: a host who reloaded used to reset the room to
+defaults, because it came back with `DEFAULT_SETTINGS` and nothing corrected it.
+
+The practical argument for the change: D6 assumed the guest could "ask out loud"
+because they are on a video call. They are looking at each other's cameras, not
+necessarily talking, and the guest is the one person who can see how the card looks
+to them.
+
+---
 
 *(D7 predates D8 and D9; kept at its original number so references stay valid.)*

@@ -27,6 +27,10 @@
   --color-cream: #fff4e2; /* page background */
   --color-paper: #fffcf6; /* raised surfaces and card stock */
 
+  /* Card stocks that are not in the logo — mirrors STOCK in src/lib/brand.ts */
+  --color-strawberry: #ffc0cb;
+  --color-mint: #aaf0d1;
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
@@ -34,6 +38,109 @@
 body {
   background-color: var(--color-cream);
   color: var(--color-ink);
+}
+
+/*
+ * Buttons get a pointer cursor.
+ *
+ * Tailwind v3's preflight carried this rule; v4 dropped it, which leaves every
+ * `<button>` on the browser default of `cursor: default`. Restored once here rather
+ * than as a class on each button, so a new button cannot forget it.
+ *
+ * It must live in `@layer base`: utilities outrank base, so `disabled:cursor-not-allowed`
+ * still wins where a button sets it. Unlayered, this rule would beat every utility.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/*
+ * Scrollbar for a pane that scrolls inside the viewport-locked layout (D10) — the
+ * controls aside, mainly, once the theme and border pickers push it past the fold.
+ *
+ * Two rule sets, both required. `scrollbar-width` / `scrollbar-color` are the
+ * standard properties, honoured by Firefox and Chromium 121+. Safari and older
+ * Chromium ignore those entirely and read only the `::-webkit-` pseudo-elements.
+ * Neither alone covers everything, and they do not conflict — each engine sees one.
+ */
+.pane-scroll {
+  /*
+   * One hue, three strengths. Dragging is the full sampled pumpkin at no
+   * transparency — the brightest the bar ever gets — and the two calmer states are
+   * the same colour thinned out, so grabbing it visibly lights it up.
+   */
+  --scroll-rest: color-mix(in oklab, var(--color-pumpkin) 38%, transparent);
+  --scroll-hover: color-mix(in oklab, var(--color-pumpkin) 62%, transparent);
+  --scroll-active: var(--color-pumpkin);
+
+}
+
+/*
+ * Firefox only.
+ *
+ * These MUST NOT apply in Chromium: setting `scrollbar-color` or `scrollbar-width`
+ * on an element makes Chromium ignore every `::-webkit-scrollbar-*` rule for it,
+ * which silently discards the arrow removal and the drag colour below and leaves a
+ * native thin scrollbar tinted orange — steppers and all.
+ *
+ * `selector(::-webkit-scrollbar)` is false in Firefox and true in Chromium/Safari,
+ * so this hands each engine exactly one mechanism.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  .pane-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-rest) transparent;
+  }
+
+  /* Firefox has no per-thumb states, so the hover lives on the pane itself. */
+  .pane-scroll:hover {
+    scrollbar-color: var(--scroll-hover) transparent;
+  }
+}
+
+.pane-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/*
+ * The stepper arrows at each end. Chromium on Windows and Linux still draws these
+ * classic scrollbar parts; macOS overlay scrollbars have none, so this looks like a
+ * no-op there and is not. `display: none` alone is ignored by some builds — the
+ * zeroed size is what actually removes them.
+ */
+.pane-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.pane-scroll::-webkit-scrollbar-track,
+.pane-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.pane-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-rest);
+  border-radius: 9999px;
+  /*
+   * Insets the thumb from the track without narrowing the grab target: the border
+   * is transparent and `content-box` clipping keeps the paint inside it, so the
+   * pointer still hits the full 8px.
+   */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.pane-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scroll-hover);
+}
+
+.pane-scroll::-webkit-scrollbar-thumb:active {
+  background-color: var(--scroll-active);
 }
 
 /*
@@ -59,4 +166,36 @@ body {
 
 .countdown-digit {
   animation: countdown-pop 0.4s ease-out both;
+}
+
+/*
+ * Theme swatch tick.
+ *
+ * The tick only ever mounts on the newly selected swatch, so the animation replays
+ * on every change — which is the point: moving between two similar papers is easy
+ * to miss otherwise. Overshoots slightly, then settles.
+ */
+@keyframes theme-tick-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.theme-tick {
+  animation: theme-tick-pop 0.25s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-tick {
+    animation: none;
+  }
 }

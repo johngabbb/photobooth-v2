@@ -25,6 +25,7 @@ const CardStudio = dynamic(
   },
 );
 
-export default function CardStudioMount() {
-  return <CardStudio />;
+/** `code` is set on `/studio/[code]` — the room this card came from. */
+export default function CardStudioMount({ code }: { code?: string | null }) {
+  return <CardStudio code={code ?? null} />;
 }
