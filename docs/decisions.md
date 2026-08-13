@@ -249,6 +249,37 @@ connection), and ICE candidates arriving before the description they belong to
 
 ---
 
+## D30 — The live preview wears the filter; the capture never does
+
+**Status:** load-bearing
+
+You could not see what a look did until after the shoot, which is the wrong time to
+find out. The stages now put the selected filter on the `<video>` itself.
+
+This costs one prop and no new logic, because `CardFilter.css` was already written in
+the grammar both sides share — `types.ts` says so — so the *same string* tints the
+preview and the canvas. There is no second definition of a look to drift.
+
+**The filter goes on the `<video>` element, never on its wrapper.** The countdown
+digit, the shutter flash and the permission prompts sit in that box too, and they are
+chrome rather than picture: greying the "Enable camera" button along with the frame
+behind it would be the same category error as filtering the card stock.
+
+**Capture stays raw, and that is what makes this safe.** `captureFrame` calls
+`drawImage(video)`, which reads the decoded frame and not the CSS-composited result —
+so the photograph is unfiltered and `renderCard` applies the look exactly once. Worth
+stating because the failure it avoids is silent: were it otherwise, every card would
+come out double-filtered while the preview looked correct. Verified by drawing the
+same video frame twice in one tick, once with the CSS filter on the element and once
+with it removed: byte-identical, while a genuinely greyscaled draw of that frame
+measured zero saturation.
+
+Note the asymmetry with D29 — the two routes fail on opposite platforms. WebKit has
+no `ctx.filter`, so the *card* needs a software fallback there; CSS `filter` on a
+video is supported everywhere, so the *preview* needs nothing.
+
+---
+
 ## D29 — Filters have a software fallback, because WebKit has no `ctx.filter`
 
 **Status:** load-bearing
