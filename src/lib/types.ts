@@ -62,6 +62,15 @@ export interface Layout {
   radius: number;
 }
 
+/**
+ * Ornament repeated around the card's padding band.
+ *
+ * Drawn as canvas vectors rather than from `public/brand/`, because the only mark
+ * asset is the bee *on* the pumpkin — the two overlap, so neither can be cropped out
+ * of it cleanly. Vectors also stay sharp from a 0.6 preview to a 300 DPI export.
+ */
+export type BorderMotif = "bee" | "pamkin" | "both";
+
 /** Colours for a rendered card. Kept separate from Layout so themes and formats compose freely. */
 export interface CardTheme {
   id: string;
@@ -72,6 +81,20 @@ export interface CardTheme {
   ink: string;
   /** Thin rule under each photo half; set to `null` to omit. */
   accent: string | null;
+}
+
+/**
+ * A border ornament, picked independently of the colour theme.
+ *
+ * Deliberately not a property of CardTheme: as themes × motifs grew, folding them
+ * together would have meant an entry per combination. Composing them keeps both
+ * lists short and lets any future paper colour take any ornament for free.
+ */
+export interface CardBorder {
+  id: string;
+  name: string;
+  /** `null` is the plain card — the default. */
+  motif: BorderMotif | null;
 }
 
 /**
@@ -106,6 +129,8 @@ export interface RenderInput {
    * text instead.
    */
   logo?: CanvasImageSource | null;
+  /** Ornament repeated around the padding band. Omit for a plain card. */
+  border?: BorderMotif | null;
   /** Multiplier over the layout's design pixels. 1 = 300 DPI. */
   scale: number;
 }

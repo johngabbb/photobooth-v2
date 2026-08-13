@@ -1,5 +1,5 @@
 import { BRAND } from "./brand";
-import type { CardTheme, Layout } from "./types";
+import type { CardBorder, CardTheme, Layout } from "./types";
 
 /**
  * Card formats, in design pixels at 300 DPI.
@@ -113,6 +113,23 @@ export const THEMES: CardTheme[] = [
     accent: BRAND.honey,
   },
 ];
+
+/**
+ * Border ornaments, chosen on top of whichever colour theme is active.
+ *
+ * Data, like everything else here — adding a motif is an entry in this list plus a
+ * draw case in `render.ts`, never a branch in the pickers.
+ */
+export const BORDERS: CardBorder[] = [
+  { id: "plain", name: "Plain", motif: null },
+  { id: "bee", name: "Bees", motif: "bee" },
+  { id: "pamkin", name: "Pamkins", motif: "pamkin" },
+  { id: "both", name: "Bees & pamkins", motif: "both" },
+];
+
+export function findBorder(id: string): CardBorder {
+  return BORDERS.find((b) => b.id === id) ?? BORDERS[0];
+}
 
 export function findTheme(id: string): CardTheme {
   return THEMES.find((t) => t.id === id) ?? THEMES[0];

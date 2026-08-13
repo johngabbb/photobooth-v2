@@ -7,6 +7,7 @@ import {
   Field,
   PrimaryButton,
   SecondaryButton,
+  BorderPicker,
   Segmented,
   ThemePicker,
   todayLabel,
@@ -14,7 +15,7 @@ import {
 import { useCamera } from "@/lib/camera";
 import { captureFrame, emptyShots } from "@/lib/capture";
 import { cardFilename, downloadCard } from "@/lib/download";
-import { PHOTO_COUNTS, THEMES, findTheme, layoutFor } from "@/lib/layouts";
+import { BORDERS, PHOTO_COUNTS, THEMES, findBorder, findTheme, layoutFor } from "@/lib/layouts";
 import { slotRects } from "@/lib/render";
 import { useBrandMark } from "@/lib/useBrandMark";
 import type { RenderInput, Shot } from "@/lib/types";
@@ -44,6 +45,7 @@ export function Booth() {
   const [phase, setPhase] = useState<Phase>("setup");
   const [count, setCount] = useState(4);
   const [themeId, setThemeId] = useState(THEMES[0].id);
+  const [borderId, setBorderId] = useState(BORDERS[0].id);
   const [caption, setCaption] = useState(todayLabel);
   // Default on: the preview is mirrored, so mirroring the output means the card
   // matches what you were looking at while posing.
@@ -162,8 +164,9 @@ export function Booth() {
       shots,
       mirror,
       logo: mark,
+      border: findBorder(borderId).motif,
     }),
-    [layout, theme, caption, shots, mirror, mark],
+    [layout, theme, caption, shots, mirror, mark, borderId],
   );
 
   const preview: RenderInput = useMemo(
@@ -189,7 +192,7 @@ export function Booth() {
   const ready = camera.status === "ready";
 
   return (
-    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_18rem]">
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_18rem] lg:gap-8">
       <div className="flex min-h-0 flex-col items-center justify-center gap-3">
         {/* The stage gets its own flex-1 box: `max-h-full` inside resolves against
             the space left over after the caption, not the whole column. */}
@@ -217,7 +220,9 @@ export function Booth() {
         </p>
       </div>
 
-      <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto">
+      {/* `overflow-y-auto` makes this a scroll box on *both* axes, so the theme
+          swatches' hover scale would be clipped at the edges. `px-1` gives it room. */}
+      <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1">
         {phase === "setup" && (
           <>
             <Field label="Photos">
@@ -233,6 +238,10 @@ export function Booth() {
 
             <Field label="Theme">
               <ThemePicker value={themeId} onChange={setThemeId} />
+            </Field>
+
+            <Field label="Border">
+              <BorderPicker value={borderId} onChange={setBorderId} theme={theme} />
             </Field>
 
             <PrimaryButton onClick={startSession} disabled={!ready}>
@@ -273,6 +282,10 @@ export function Booth() {
           <>
             <Field label="Theme">
               <ThemePicker value={themeId} onChange={setThemeId} />
+            </Field>
+
+            <Field label="Border">
+              <BorderPicker value={borderId} onChange={setBorderId} theme={theme} />
             </Field>
 
             <Field label="Caption">

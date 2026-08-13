@@ -1,6 +1,14 @@
-import { CARD_FONT } from "./brand";
+import { BRAND, CARD_FONT, PLACEHOLDER_TINTS } from "./brand";
 import { ROLES } from "./types";
-import type { Layout, Rect, RenderInput, Role, Shot, SplitMode } from "./types";
+import type {
+  BorderMotif,
+  Layout,
+  Rect,
+  RenderInput,
+  Role,
+  Shot,
+  SplitMode,
+} from "./types";
 
 /**
  * Pure canvas rendering for a photocard.
@@ -106,18 +114,76 @@ export function drawCover(
 }
 
 /** Placeholder fill for a half with no photo yet. */
+/**
+ * A slot with no photograph in it yet.
+ *
+ * Drawn as a stand-in photo rather than a blank box: the same role gradient and
+ * off-centre arcs the studio's synthetic photos use, with the mark where those put
+ * a shot number. That makes a half-shot card look like a card, not like a bug.
+ *
+ * Everything is painted straight into `ctx` — no intermediate canvas — so this stays
+ * DOM-free and keeps running under `@napi-rs/canvas` in Node.
+ */
 function drawEmptyHalf(
   ctx: CanvasRenderingContext2D,
   dest: Rect,
   radius: number,
   ink: string,
+  role: Role,
+  logo?: CanvasImageSource | null,
 ) {
+  const short = Math.min(dest.w, dest.h);
+
   ctx.save();
   roundedPath(ctx, dest, radius);
-  ctx.fillStyle = withAlpha(ink, 0.06);
-  ctx.fill();
+  ctx.clip();
 
-  ctx.strokeStyle = withAlpha(ink, 0.18);
+  const tint = PLACEHOLDER_TINTS[role];
+  const grad = ctx.createLinearGradient(
+    dest.x,
+    dest.y,
+    dest.x + dest.w,
+    dest.y + dest.h,
+  );
+  grad.addColorStop(0, tint.from);
+  grad.addColorStop(1, tint.to);
+  ctx.fillStyle = grad;
+  ctx.fillRect(dest.x, dest.y, dest.w, dest.h);
+
+  // Arcs sized off the slot rather than fixed, so a 3:1 landscape half and a
+  // portrait one get the same motif instead of the same pixel count.
+  const cx = dest.x + dest.w * 0.5;
+  const cy = dest.y + dest.h * 0.42;
+  const step = short * 0.17;
+  const far = Math.hypot(dest.w, dest.h);
+
+  // Drawn in the role colour, not white: white vanished once the fill was pulled
+  // back toward the card stock.
+  ctx.strokeStyle = withAlpha(tint.line, 0.28);
+  ctx.lineWidth = Math.max(2, short * 0.028);
+  for (let r = step; r < far; r += step) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  if (logo) {
+    const size = short * 0.44;
+    drawContain(ctx, logo, {
+      x: cx - size / 2,
+      y: cy - size / 2,
+      w: size,
+      h: size,
+    });
+  }
+
+  ctx.restore();
+
+  // Dashed edge, drawn unclipped so the full stroke width survives. It is the one
+  // cue that separates a waiting slot from a photographed one.
+  ctx.save();
+  roundedPath(ctx, dest, radius);
+  ctx.strokeStyle = withAlpha(ink, 0.28);
   ctx.setLineDash([10, 8]);
   ctx.lineWidth = 2;
   ctx.stroke();
@@ -325,13 +391,196 @@ function drawFooter(ctx: CanvasRenderingContext2D, input: RenderInput) {
 }
 
 /**
+ * A small bee, centred on `cx, cy` and fitting a `s`-square box.
+ *
+ * Deliberately fewer features than the logo: at border size a face and six legs
+ * turn to mud, so this keeps only what survives — striped body, two wings, two
+ * antennae.
+ */
+function drawBeeMotif(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+) {
+  const r = s / 2;
+  ctx.save();
+  ctx.lineWidth = Math.max(1, s * 0.06);
+  ctx.strokeStyle = BRAND.ink;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  // Antennae first, so the body covers where they meet it.
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.22, cy - r * 0.34);
+  ctx.lineTo(cx - r * 0.44, cy - r * 0.82);
+  ctx.moveTo(cx + r * 0.22, cy - r * 0.34);
+  ctx.lineTo(cx + r * 0.44, cy - r * 0.82);
+  ctx.stroke();
+
+  ctx.fillStyle = BRAND.wing;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(
+      cx + dir * r * 0.34,
+      cy - r * 0.3,
+      r * 0.34,
+      r * 0.19,
+      dir * 0.7,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r * 0.18, r * 0.62, r * 0.44, 0, 0, Math.PI * 2);
+  ctx.fillStyle = BRAND.honey;
+  ctx.fill();
+
+  // Stripes clipped to the body, so they cannot spill past the silhouette.
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = BRAND.ink;
+  for (const dx of [-0.3, 0.06, 0.42]) {
+    ctx.fillRect(cx + r * dx, cy - r * 0.4, r * 0.2, r * 1.3);
+  }
+  ctx.restore();
+
+  // The path survives save/restore — this strokes the body ellipse above.
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A small pamkin, centred on `cx, cy` and fitting a `s`-square box. */
+function drawPamkinMotif(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+) {
+  const r = s / 2;
+  ctx.save();
+  ctx.lineWidth = Math.max(1, s * 0.06);
+  ctx.strokeStyle = BRAND.ink;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r * 0.5);
+  ctx.lineTo(cx, cy - r * 0.9);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx + r * 0.36, cy - r * 0.74, r * 0.3, r * 0.15, -0.55, 0, Math.PI * 2);
+  ctx.fillStyle = BRAND.leaf;
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r * 0.12, r * 0.8, r * 0.68, 0, 0, Math.PI * 2);
+  ctx.fillStyle = BRAND.pumpkin;
+  ctx.fill();
+
+  // Ribs, clipped to the body for the same reason the bee's stripes are.
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = withAlpha(BRAND.ink, 0.35);
+  for (const dx of [-0.4, 0.4]) {
+    ctx.beginPath();
+    ctx.ellipse(cx + r * dx, cy + r * 0.12, r * 0.26, r * 0.66, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r * 0.12, r * 0.8, r * 0.68, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = BRAND.ink;
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Draw a single motif, centred on `cx, cy` in a `size` box.
+ *
+ * Exported so the theme picker can show the ornament a theme actually applies,
+ * drawn by this same code — a hand-made SVG in the UI would drift from the card the
+ * first time either changed. `both` pairs the two side by side, which is a picker
+ * affordance; on a card `both` alternates along the edge instead.
+ */
+export function drawMotif(
+  ctx: CanvasRenderingContext2D,
+  motif: BorderMotif,
+  cx: number,
+  cy: number,
+  size: number,
+) {
+  if (motif === "bee") {
+    drawBeeMotif(ctx, cx, cy, size);
+  } else if (motif === "pamkin") {
+    drawPamkinMotif(ctx, cx, cy, size);
+  } else {
+    const s = size * 0.66;
+    drawBeeMotif(ctx, cx - size * 0.21, cy - size * 0.04, s);
+    drawPamkinMotif(ctx, cx + size * 0.21, cy + size * 0.08, s);
+  }
+}
+
+/**
+ * Repeat a motif around the card's padding band.
+ *
+ * Sized and placed off `layout.padding`, so this works for any format without a
+ * branch: the band is narrow (48 design px on a duo card), and the motif is kept to
+ * two thirds of it so nothing can reach into the photo area.
+ */
+function drawCardBorder(
+  ctx: CanvasRenderingContext2D,
+  layout: Layout,
+  border: BorderMotif,
+) {
+  const { padding, canvas } = layout;
+  const band = Math.min(padding.top, padding.right, padding.bottom, padding.left);
+  const size = band * 0.68;
+  const step = size * 1.85;
+
+  const x0 = padding.left / 2;
+  const x1 = canvas.w - padding.right / 2;
+  const y0 = padding.top / 2;
+  const y1 = canvas.h - padding.bottom / 2;
+
+  // `both` alternates along each edge, and each edge counts from its own start so
+  // the corners stay consistent rather than depending on push order.
+  const place = (x: number, y: number, i: number) => {
+    const bee = border === "bee" || (border === "both" && i % 2 === 0);
+    if (bee) drawBeeMotif(ctx, x, y, size);
+    else drawPamkinMotif(ctx, x, y, size);
+  };
+
+  const cols = Math.max(2, Math.round((x1 - x0) / step));
+  for (let i = 0; i <= cols; i++) {
+    const x = x0 + ((x1 - x0) * i) / cols;
+    place(x, y0, i);
+    place(x, y1, i);
+  }
+
+  // Skips the first and last row: the corners were already covered above.
+  const rows = Math.max(2, Math.round((y1 - y0) / step));
+  for (let i = 1; i < rows; i++) {
+    const y = y0 + ((y1 - y0) * i) / rows;
+    place(x0, y, i);
+    place(x1, y, i);
+  }
+}
+
+/**
  * Render a complete card into `ctx`.
  *
  * The context is expected to be sized `layout.canvas * scale`; this function
  * applies the scale itself and draws everything in design pixels.
  */
 export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
-  const { layout, theme, shots, mirror, scale } = input;
+  const { layout, theme, shots, mirror, scale, border } = input;
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -340,6 +589,8 @@ export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
   // Card stock
   ctx.fillStyle = theme.paper;
   ctx.fillRect(0, 0, layout.canvas.w, layout.canvas.h);
+
+  if (border) drawCardBorder(ctx, layout, border);
 
   const slots = slotRects(layout);
   const roles = rolesFor(layout);
@@ -353,7 +604,7 @@ export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
       if (src) {
         drawCover(ctx, src, half, { radius: layout.radius, mirror });
       } else {
-        drawEmptyHalf(ctx, half, layout.radius, theme.ink);
+        drawEmptyHalf(ctx, half, layout.radius, theme.ink, roles[h], input.logo);
       }
     });
 

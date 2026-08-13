@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { THEMES } from "../layouts";
+import { BORDERS, THEMES } from "../layouts";
 import {
   HOST_CLOCK,
   PING_COUNT,
@@ -84,7 +84,11 @@ export type PeerFrameHandler = (
   image: HTMLImageElement,
 ) => void;
 
-const DEFAULT_SETTINGS: RoomSettings = { count: 4, themeId: THEMES[0].id };
+const DEFAULT_SETTINGS: RoomSettings = {
+  count: 4,
+  themeId: THEMES[0].id,
+  borderId: BORDERS[0].id,
+};
 
 export function useSession(code: string): Session {
   // Derived at mount, not in an effect: this hook only ever runs client-side (the

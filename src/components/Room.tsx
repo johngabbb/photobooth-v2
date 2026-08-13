@@ -8,14 +8,16 @@ import {
   Field,
   PrimaryButton,
   SecondaryButton,
+  BorderPicker,
   Segmented,
   ThemePicker,
   todayLabel,
 } from "@/components/Controls";
 import { useCamera } from "@/lib/camera";
+import { XL_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 import { captureFrame, emptyShots } from "@/lib/capture";
 import { cardFilename, downloadCard } from "@/lib/download";
-import { PHOTO_COUNTS, findTheme, layoutFor } from "@/lib/layouts";
+import { PHOTO_COUNTS, findBorder, findTheme, layoutFor } from "@/lib/layouts";
 import { slotRects } from "@/lib/render";
 import { useBrandMark } from "@/lib/useBrandMark";
 import { useSession } from "@/lib/session/useSession";
@@ -90,6 +92,10 @@ export function Room({ code }: { code: string }) {
   const count = settings.count;
   const layout = useMemo(() => layoutFor("duo", count), [count]);
   const theme = useMemo(() => findTheme(settings.themeId), [settings.themeId]);
+  const border = useMemo(
+    () => findBorder(settings.borderId).motif,
+    [settings.borderId],
+  );
 
   // The stage shows the whole slot now — both halves side by side — so the preview
   // is a live rehearsal of what the card will hold.
@@ -234,8 +240,9 @@ export function Room({ code }: { code: string }) {
       shots,
       mirror,
       logo: mark,
+      border,
     }),
-    [layout, theme, caption, shots, mirror, mark],
+    [layout, theme, caption, shots, mirror, mark, border],
   );
 
   const preview: RenderInput = useMemo(
@@ -257,6 +264,11 @@ export function Room({ code }: { code: string }) {
   // A queued capture always wins the stage, so a retake shows the camera and its
   // countdown instead of leaving you photographed blind behind the finished card.
   const showCard = complete && !pending;
+  // From `xl` the card has a column of its own, so the stage never swaps — you keep
+  // watching the cameras while the finished card sits beside them. Narrower than that
+  // there is no room for both, and the stage still hands over when the card is done.
+  const wide = useMediaQuery(XL_QUERY);
+  const cardInStage = showCard && !wide;
   // The scheduler sets `remaining` to null once nothing is queued, so this reads
   // "every shutter has fired, but not every half has arrived" without touching a ref
   // during render.
@@ -274,10 +286,13 @@ export function Room({ code }: { code: string }) {
     // On a phone the two rows must be given an explicit share. Left to auto sizing the
     // controls' content wins and squeezes the stage to ~150px — unusable for framing a
     // face. 3fr/2fr keeps the camera dominant and lets the controls scroll.
-    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-6 lg:px-6 lg:py-5">
-      <div className="flex min-h-0 flex-col items-center justify-center gap-3">
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-8 lg:px-6 lg:py-5 xl:max-w-none xl:grid-cols-[20rem_1fr_22rem] xl:gap-10 2xl:grid-cols-[22rem_1fr_30rem] 2xl:gap-14">
+      {/* Camera first in the DOM because on a phone it must take row 1, the 3fr one.
+          The `xl:order-*` classes below move it to the middle column on wide screens
+          without disturbing that. */}
+      <div className="flex min-h-0 flex-col items-center justify-center gap-3 xl:order-2">
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
-          {showCard ? (
+          {cardInStage ? (
             <CardCanvas
               input={preview}
               className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
@@ -298,7 +313,7 @@ export function Room({ code }: { code: string }) {
           )}
         </div>
         <p className="shrink-0 font-mono text-[11px] text-ink/50">
-          {showCard
+          {cardInStage
             ? `${layout.physical} · ${layout.canvas.w}×${layout.canvas.h}px · 300 DPI`
             : started
               ? `Photo ${Math.min(filled + 1, count)} of ${count}`
@@ -306,7 +321,7 @@ export function Room({ code }: { code: string }) {
         </p>
       </div>
 
-      <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto">
+      <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1 xl:order-1">
         {session.transportKind === "local" && (
           <div className="rounded-xl border border-honey/60 bg-honey/15 p-3">
             <p className="text-xs font-semibold text-ink/80">Same-browser mode</p>
@@ -370,6 +385,16 @@ export function Room({ code }: { code: string }) {
                 <ThemePicker
                   value={settings.themeId}
                   onChange={(id) => session.updateSettings({ themeId: id })}
+                />
+              </div>
+            </Field>
+
+            <Field label={isHost ? "Border" : "Border (set by host)"}>
+              <div className={isHost ? "" : "pointer-events-none opacity-60"}>
+                <BorderPicker
+                  value={settings.borderId}
+                  onChange={(id) => session.updateSettings({ borderId: id })}
+                  theme={theme}
                 />
               </div>
             </Field>
@@ -439,7 +464,37 @@ export function Room({ code }: { code: string }) {
             synced={session.clock.synced}
           />
         )}
+
+        {/* Below `xl` the card rides at the foot of this pane, which already scrolls
+            (D10 — the page itself never does). Scroll past the controls and the
+            template is there, filling in as shots land. Suppressed once the stage has
+            taken the card over, so it is never on screen twice. */}
+        {!wide && !cardInStage && (
+          <div className="flex shrink-0 flex-col items-center gap-2 pb-1">
+            <span className="text-xs font-semibold uppercase tracking-widest text-ink/45">
+              Your card
+            </span>
+            <CardCanvas
+              input={preview}
+              className="max-h-[60vh] max-w-full rounded-xl shadow-lg shadow-ink/15 ring-1 ring-ink/10"
+            />
+          </div>
+        )}
       </aside>
+
+      {/* The card's own column, from `xl` only. Below that it is not rendered at all,
+          which keeps the aside as the second grid item on a phone. */}
+      {wide && (
+        <div className="flex min-h-0 flex-col items-center justify-center gap-3 xl:order-3">
+          <CardCanvas
+            input={preview}
+            className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
+          />
+          <p className="shrink-0 font-mono text-[11px] text-ink/50">
+            {layout.physical} · {filled}/{count} filled
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -37,6 +37,8 @@ export interface Presence {
 export interface RoomSettings {
   count: number;
   themeId: string;
+  /** Border ornament, chosen independently of the colour theme. */
+  borderId: string;
 }
 
 export type SessionMessage =

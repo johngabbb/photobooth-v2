@@ -42,7 +42,7 @@ export function Landing() {
           type="button"
           onClick={startSession}
           disabled={starting}
-          className="rounded-full bg-pumpkin px-8 py-3.5 text-base font-semibold text-cream shadow-lg shadow-pumpkin/30 transition hover:brightness-105 disabled:opacity-60"
+          className="rounded-full bg-pumpkin px-8 py-3.5 text-base font-semibold text-cream shadow-lg shadow-pumpkin/30 transition duration-200 ease-out enabled:hover:-translate-y-0.5 enabled:hover:shadow-xl enabled:hover:shadow-pumpkin/45 enabled:hover:brightness-105 enabled:active:translate-y-0 enabled:active:shadow-md focus-visible:ring-2 focus-visible:ring-pumpkin focus-visible:ring-offset-2 focus-visible:ring-offset-cream focus-visible:outline-none motion-reduce:transition-none motion-reduce:enabled:hover:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {starting ? "Creating room…" : "Start a session"}
         </button>

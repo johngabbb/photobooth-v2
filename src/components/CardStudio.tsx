@@ -5,12 +5,13 @@ import { CardCanvas } from "@/components/CardCanvas";
 import {
   Field,
   PrimaryButton,
+  BorderPicker,
   Segmented,
   ThemePicker,
   todayLabel,
 } from "@/components/Controls";
 import { cardFilename, downloadCard } from "@/lib/download";
-import { PHOTO_COUNTS, THEMES, findTheme, layoutFor } from "@/lib/layouts";
+import { BORDERS, PHOTO_COUNTS, THEMES, findBorder, findTheme, layoutFor } from "@/lib/layouts";
 import { placeholderShots } from "@/lib/placeholders";
 import { useBrandMark } from "@/lib/useBrandMark";
 import type { CardMode, RenderInput, Shot } from "@/lib/types";
@@ -33,6 +34,7 @@ export function CardStudio() {
   const [mode, setMode] = useState<CardMode>("duo");
   const [count, setCount] = useState<number>(4);
   const [themeId, setThemeId] = useState(THEMES[0].id);
+  const [borderId, setBorderId] = useState(BORDERS[0].id);
   const [mirror, setMirror] = useState(false);
   const [caption, setCaption] = useState(todayLabel);
   const [busy, setBusy] = useState(false);
@@ -52,8 +54,9 @@ export function CardStudio() {
       shots,
       mirror,
       logo: mark,
+      border: findBorder(borderId).motif,
     }),
-    [layout, theme, caption, shots, mirror, mark],
+    [layout, theme, caption, shots, mirror, mark, borderId],
   );
 
   const preview: RenderInput = useMemo(
@@ -74,7 +77,7 @@ export function CardStudio() {
     // `min-h-0` on both the grid and the preview column is what actually makes the
     // no-scroll layout work: without it a flex/grid child refuses to shrink below
     // its content's intrinsic size and pushes the page taller than the viewport.
-    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_18rem]">
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_18rem] lg:gap-8">
       <div className="flex min-h-0 flex-col items-center justify-center gap-3">
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           <CardCanvas
@@ -87,7 +90,7 @@ export function CardStudio() {
         </p>
       </div>
 
-      <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto">
+      <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1">
         <Field label="Card">
           <Segmented
             options={[
@@ -109,6 +112,10 @@ export function CardStudio() {
 
         <Field label="Theme">
           <ThemePicker value={themeId} onChange={setThemeId} />
+        </Field>
+
+        <Field label="Border">
+          <BorderPicker value={borderId} onChange={setBorderId} theme={theme} />
         </Field>
 
         <Field label="Caption">
