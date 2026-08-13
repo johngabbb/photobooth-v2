@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/brand/photobee-logo.png" alt="pamkin photo bee" width="200" />
+<img src="docs/cover.png" alt="pamkin photo bee" width="820" />
 
 **A photobooth for two people who aren't in the same room.**
 
@@ -28,42 +28,6 @@ no accounts, no database, no configuration.
 > room falls back to `BroadcastChannel`, which reaches other tabs in the same browser
 > and nothing else — the room tells you so in a banner. See
 > [Cross-device sessions](#cross-device-sessions).
-
-## Is pnpm different from npm here?
-
-**For running things, no.** `pnpm dev` does exactly what `npm run dev` does — it reads
-the same `scripts` block in `package.json`. pnpm just lets you drop the `run` for any
-script name that isn't one of its own commands.
-
-| Task | npm | pnpm |
-|---|---|---|
-| Install everything | `npm install` | `pnpm install` |
-| Run a script | `npm run dev` | `pnpm dev` |
-| Add a dependency | `npm install foo` | `pnpm add foo` |
-| Add a dev dependency | `npm install -D foo` | `pnpm add -D foo` |
-| Run a local binary | `npx tsc` | `pnpm exec tsc` |
-| Run a package you don't have | `npx create-next-app` | `pnpm dlx create-next-app` |
-
-**For installing, yes, in one way that matters.** pnpm keeps a single content-addressed
-store and symlinks into `node_modules`, so it is faster and far smaller on disk. The
-consequence worth knowing: pnpm's `node_modules` is *strict*. A package you never
-declared is not importable, even if something else in the tree depends on it. npm
-flattens everything, so that import would have silently worked. This is a good thing —
-it catches an undeclared dependency on your machine instead of in a Vercel build — but
-it is the one way a project can install under npm and fail under pnpm.
-
-> [!IMPORTANT]
-> **This repo currently commits `package-lock.json` and has no `pnpm-lock.yaml`.**
-> Vercel picks its package manager from the committed lockfile, so builds run on **npm**
-> no matter what you use locally. To move the whole project to pnpm:
->
-> ```bash
-> rm package-lock.json && pnpm install   # writes pnpm-lock.yaml
-> git rm --cached package-lock.json
-> git add pnpm-lock.yaml && git commit -m "Switch to pnpm"
-> ```
->
-> Commit exactly one lockfile. Two is how local and CI quietly drift apart.
 
 ## Commands
 
@@ -120,30 +84,11 @@ configured, and it is the only way to test it.
 Full walkthrough, including the deploy loop's two silent-failure traps:
 **[docs/setup.md](docs/setup.md)**.
 
-## How it's built
+## Built with
 
 Next.js 16.3 (App Router, Turbopack) · React 19.2 · Tailwind CSS v4 · TypeScript.
 Photographs never touch a server — they are composited in the browser and stay on the
 device that took them.
-
-A few decisions that explain the shape of the code:
-
-- **One renderer, no exceptions.** `renderCard` in `src/lib/render.ts` draws the
-  on-screen preview *and* the downloaded PNG, differing only by a `scale` factor. The
-  moment a second implementation exists, the preview starts lying about the download.
-- **Card geometry is data.** Photo counts and formats live in `layouts.ts`; every
-  rectangle is derived from them. Adding a size is an entry in a list, never a branch in
-  the renderer.
-- **The shutter is an instant, not a command.** The host broadcasts a timestamp on its
-  own clock; each device converts it using an NTP-style offset and schedules locally. A
-  late message gives you less warning — it does not delay the shot.
-- **Filters are drawn twice over, deliberately.** WebKit never implemented
-  `ctx.filter`, so on iOS the canvas ignores it silently. There is a spec-exact
-  colour-matrix fallback for the card, while the live preview uses the CSS property —
-  from the same string, so a look cannot be defined twice.
-
-The reasoning behind anything that looks arbitrary is written down in
-**[docs/decisions.md](docs/decisions.md)** — worth a look before reversing something.
 
 ## Docs
 
