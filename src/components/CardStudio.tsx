@@ -6,12 +6,22 @@ import {
   Field,
   PrimaryButton,
   BorderPicker,
+  FilterPicker,
   Segmented,
   ThemePicker,
   todayLabel,
 } from "@/components/Controls";
 import { cardFilename, downloadCard } from "@/lib/download";
-import { BORDERS, PHOTO_COUNTS, THEMES, findBorder, findTheme, layoutFor } from "@/lib/layouts";
+import {
+  BORDERS,
+  FILTERS,
+  PHOTO_COUNTS,
+  THEMES,
+  findBorder,
+  findFilter,
+  findTheme,
+  layoutFor,
+} from "@/lib/layouts";
 import { placeholderShots } from "@/lib/placeholders";
 import { useBrandMark } from "@/lib/useBrandMark";
 import type { CardMode, RenderInput, Shot } from "@/lib/types";
@@ -35,6 +45,7 @@ export function CardStudio() {
   const [count, setCount] = useState<number>(4);
   const [themeId, setThemeId] = useState(THEMES[0].id);
   const [borderId, setBorderId] = useState(BORDERS[0].id);
+  const [filterId, setFilterId] = useState(FILTERS[0].id);
   const [mirror, setMirror] = useState(false);
   const [caption, setCaption] = useState(todayLabel);
   const [busy, setBusy] = useState(false);
@@ -55,8 +66,9 @@ export function CardStudio() {
       mirror,
       logo: mark,
       border: findBorder(borderId).motif,
+      filter: findFilter(filterId).css,
     }),
-    [layout, theme, caption, shots, mirror, mark, borderId],
+    [layout, theme, caption, shots, mirror, mark, borderId, filterId],
   );
 
   const preview: RenderInput = useMemo(
@@ -116,6 +128,10 @@ export function CardStudio() {
 
         <Field label="Border">
           <BorderPicker value={borderId} onChange={setBorderId} theme={theme} />
+        </Field>
+
+        <Field label="Filter">
+          <FilterPicker value={filterId} onChange={setFilterId} />
         </Field>
 
         <Field label="Caption">

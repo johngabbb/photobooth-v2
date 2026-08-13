@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { BORDERS, THEMES, findBorder, findTheme } from "@/lib/layouts";
-import { drawBackdrop, drawMotif } from "@/lib/render";
+import { BRAND } from "@/lib/brand";
+import { BORDERS, FILTERS, THEMES, findBorder, findFilter, findTheme } from "@/lib/layouts";
+import { drawBackdrop, drawFilterSample, drawMotif } from "@/lib/render";
 import type { BorderMotif, CardBackdrop, CardTheme } from "@/lib/types";
 
 /**
@@ -145,6 +146,98 @@ function BackdropSwatch({
     // twenty-fifth — scaled up here so the sprockets stay visible at 36px.
     drawBackdrop(ctx, backdrop, size, size, size * 0.2);
   }, [backdrop, size]);
+
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden
+      className="col-start-1 row-start-1 rounded-full"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/**
+ * Photo looks. The swatch is a filtered sample rather than a colour, so the row
+ * shows what each option does instead of asking you to guess from its name.
+ */
+export function FilterPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const selected = findFilter(value);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => {
+          const active = f.id === value;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => onChange(f.id)}
+              aria-label={f.name}
+              aria-pressed={active}
+              title={f.name}
+              className="grid h-9 w-9 place-items-center overflow-hidden rounded-full outline-offset-2 transition duration-200 ease-out hover:scale-110 focus-visible:outline-2 focus-visible:outline-ink/40 motion-reduce:transition-none motion-reduce:hover:scale-100"
+              style={{ boxShadow: `inset 0 0 0 3px ${BRAND.ink}22` }}
+            >
+              <FilterSwatch css={f.css} size={36} dim={active} />
+              {active && (
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                  className="theme-tick col-start-1 row-start-1 h-4 w-4 self-center justify-self-center"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth={3.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <span className="text-xs text-ink/50">{selected.name}</span>
+    </div>
+  );
+}
+
+function FilterSwatch({
+  css,
+  size,
+  dim,
+}: {
+  css: string | null;
+  size: number;
+  dim: boolean;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    ctx.globalAlpha = dim ? 0.45 : 1;
+    drawFilterSample(ctx, css, size);
+  }, [css, size, dim]);
 
   return (
     <canvas

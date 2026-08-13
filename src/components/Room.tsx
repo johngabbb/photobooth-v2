@@ -9,6 +9,7 @@ import {
   PrimaryButton,
   SecondaryButton,
   BorderPicker,
+  FilterPicker,
   Segmented,
   ThemePicker,
   todayLabel,
@@ -17,7 +18,7 @@ import { useCamera } from "@/lib/camera";
 import { XL_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 import { captureFrame, emptyShots } from "@/lib/capture";
 import { cardFilename, downloadCard } from "@/lib/download";
-import { PHOTO_COUNTS, findBorder, findTheme, layoutFor } from "@/lib/layouts";
+import { PHOTO_COUNTS, findBorder, findFilter, findTheme, layoutFor } from "@/lib/layouts";
 import { slotRects } from "@/lib/render";
 import { useBrandMark } from "@/lib/useBrandMark";
 import { useSession } from "@/lib/session/useSession";
@@ -95,6 +96,10 @@ export function Room({ code }: { code: string }) {
   const border = useMemo(
     () => findBorder(settings.borderId).motif,
     [settings.borderId],
+  );
+  const filter = useMemo(
+    () => findFilter(settings.filterId).css,
+    [settings.filterId],
   );
 
   // The stage shows the whole slot now — both halves side by side — so the preview
@@ -241,8 +246,9 @@ export function Room({ code }: { code: string }) {
       mirror,
       logo: mark,
       border,
+      filter,
     }),
-    [layout, theme, caption, shots, mirror, mark, border],
+    [layout, theme, caption, shots, mirror, mark, border, filter],
   );
 
   const preview: RenderInput = useMemo(
@@ -319,6 +325,18 @@ export function Room({ code }: { code: string }) {
               ? `Photo ${Math.min(filled + 1, count)} of ${count}`
               : `You are ${ROLE_LABEL[role]} · live preview of one ${layout.physical} slot`}
         </p>
+
+        {/* Anchored under the cameras rather than in the controls pane, which
+            scrolls — the one control you reach for should never be scrolled off.
+            `shrink-0` keeps it at full height and lets the stage above absorb the
+            space instead. */}
+        {isHost && !started && (
+          <div className="shrink-0">
+            <PrimaryButton onClick={startSession} disabled={!canStart}>
+              {canStart ? `Take ${count} photos together` : "Waiting…"}
+            </PrimaryButton>
+          </div>
+        )}
       </div>
 
       <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1 xl:order-1">
@@ -368,7 +386,9 @@ export function Room({ code }: { code: string }) {
 
         {!started && (
           <>
-            <Field label={isHost ? "Photos" : "Photos (set by host)"}>
+            {/* Both people can change these — every edit is broadcast as a patch
+                and merged on both devices. Only the countdown stays host-only. */}
+            <Field label="Photos">
               <Segmented
                 options={PHOTO_COUNTS.map((n) => ({
                   value: String(n),
@@ -376,27 +396,29 @@ export function Room({ code }: { code: string }) {
                 }))}
                 value={String(count)}
                 onChange={(v) => session.updateSettings({ count: Number(v) })}
-                disabled={!isHost}
               />
             </Field>
 
-            <Field label={isHost ? "Theme" : "Theme (set by host)"}>
-              <div className={isHost ? "" : "pointer-events-none opacity-60"}>
-                <ThemePicker
-                  value={settings.themeId}
-                  onChange={(id) => session.updateSettings({ themeId: id })}
-                />
-              </div>
+            <Field label="Theme">
+              <ThemePicker
+                value={settings.themeId}
+                onChange={(id) => session.updateSettings({ themeId: id })}
+              />
             </Field>
 
-            <Field label={isHost ? "Border" : "Border (set by host)"}>
-              <div className={isHost ? "" : "pointer-events-none opacity-60"}>
-                <BorderPicker
-                  value={settings.borderId}
-                  onChange={(id) => session.updateSettings({ borderId: id })}
-                  theme={theme}
-                />
-              </div>
+            <Field label="Border">
+              <BorderPicker
+                value={settings.borderId}
+                onChange={(id) => session.updateSettings({ borderId: id })}
+                theme={theme}
+              />
+            </Field>
+
+            <Field label="Filter">
+              <FilterPicker
+                value={settings.filterId}
+                onChange={(id) => session.updateSettings({ filterId: id })}
+              />
             </Field>
           </>
         )}
@@ -457,9 +479,6 @@ export function Room({ code }: { code: string }) {
             bothReady={bothReady}
             peerSynced={Boolean(peer?.clockSynced)}
             isHost={isHost}
-            canStart={canStart}
-            count={count}
-            onStart={startSession}
             rttMs={session.clock.rttMs}
             synced={session.clock.synced}
           />
@@ -499,6 +518,7 @@ export function Room({ code }: { code: string }) {
   );
 }
 
+/** Status only — the start button lives under the cameras, not in this pane. */
 function StatusPanel({
   started,
   waitingForPeer,
@@ -506,9 +526,6 @@ function StatusPanel({
   bothReady,
   peerSynced,
   isHost,
-  canStart,
-  count,
-  onStart,
   rttMs,
   synced,
 }: {
@@ -518,9 +535,6 @@ function StatusPanel({
   bothReady: boolean;
   peerSynced: boolean;
   isHost: boolean;
-  canStart: boolean;
-  count: number;
-  onStart: () => void;
   rttMs: number;
   synced: boolean;
 }) {
@@ -568,12 +582,6 @@ function StatusPanel({
           </p>
         )}
       </div>
-
-      {isHost && (
-        <PrimaryButton onClick={onStart} disabled={!canStart}>
-          {canStart ? `Take ${count} photos together` : "Waiting…"}
-        </PrimaryButton>
-      )}
     </>
   );
 }

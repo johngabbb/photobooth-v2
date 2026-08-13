@@ -1,5 +1,5 @@
 import { BRAND, SPECIAL, STOCK, mixHex } from "./brand";
-import type { CardBorder, CardTheme, Layout } from "./types";
+import type { CardBorder, CardFilter, CardTheme, Layout } from "./types";
 
 /**
  * Card formats, in design pixels at 300 DPI.
@@ -167,6 +167,29 @@ export const BORDERS: CardBorder[] = [
   { id: "max", name: "Max", motif: "max" },
   { id: "hunter", name: "Hunter", motif: "hunter" },
 ];
+
+/**
+ * Looks applied to the photographs.
+ *
+ * Values are canvas/CSS filter strings, so the same entry drives the exported card
+ * and could drive a live preview unchanged. Kept mild on purpose: these sit next to
+ * a face, and aggressive contrast on skin looks worse the larger the print gets.
+ */
+export const FILTERS: CardFilter[] = [
+  { id: "original", name: "Original", css: null },
+  { id: "vivid", name: "Vivid", css: "saturate(1.45) contrast(1.12)" },
+  { id: "classic", name: "Classic", css: "sepia(0.42) saturate(0.9) contrast(1.06)" },
+  { id: "grayscale", name: "Grayscale", css: "grayscale(1) contrast(1.08)" },
+  {
+    id: "faded",
+    name: "Faded",
+    css: "saturate(0.72) contrast(0.88) brightness(1.08)",
+  },
+];
+
+export function findFilter(id: string): CardFilter {
+  return FILTERS.find((f) => f.id === id) ?? FILTERS[0];
+}
 
 export function findBorder(id: string): CardBorder {
   return BORDERS.find((b) => b.id === id) ?? BORDERS[0];

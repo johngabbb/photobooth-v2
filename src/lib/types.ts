@@ -120,6 +120,19 @@ export interface CardBorder {
 }
 
 /**
+ * A look applied to the photographs themselves.
+ *
+ * `css` is a canvas `filter` string, which is the same grammar as the CSS property —
+ * so the identical value can tint a live `<video>` preview and the exported canvas
+ * without being expressed twice. `null` is untouched.
+ */
+export interface CardFilter {
+  id: string;
+  name: string;
+  css: string | null;
+}
+
+/**
  * One captured moment. Both roles are captured at the same instant, but a half may
  * be `null` while a session is mid-flight or in solo mode.
  */
@@ -153,6 +166,11 @@ export interface RenderInput {
   logo?: CanvasImageSource | null;
   /** Ornament repeated around the padding band. Omit for a plain card. */
   border?: BorderMotif | null;
+  /**
+   * Canvas `filter` string applied to the photographs — and only to them. The card
+   * stock, backdrop, ornaments, and footer are never filtered.
+   */
+  filter?: string | null;
   /** Multiplier over the layout's design pixels. 1 = 300 DPI. */
   scale: number;
 }

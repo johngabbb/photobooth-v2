@@ -132,12 +132,20 @@ function drawEmptyHalf(
   ink: string,
   role: Role,
   logo?: CanvasImageSource | null,
+  filter?: string | null,
 ) {
   const short = Math.min(dest.w, dest.h);
 
   ctx.save();
   roundedPath(ctx, dest, radius);
   ctx.clip();
+
+  // The placeholder is filtered like a real photo would be, so the filter picker can
+  // be judged before a single shot is taken. It applies to the gradient and arcs as
+  // well as the mark — `ctx.filter` affects every drawing operation, not just images
+  // — and the `restore()` below clears it before the dashed edge, which is a UI cue
+  // rather than picture content and should not go grey with everything else.
+  if (filter) ctx.filter = filter;
 
   const tint = PLACEHOLDER_TINTS[role];
   const grad = ctx.createLinearGradient(
@@ -469,6 +477,36 @@ export function drawBackdrop(
       }
     }
   }
+
+  ctx.restore();
+}
+
+/**
+ * A sample swatch showing what a filter does: the mark on the house palette.
+ *
+ * The bee rather than the full mark, and a warm pumpkin-to-cream ramp behind it —
+ * no leaf green anywhere, so the row stays on-brand. It still carries the range a
+ * filter needs to show itself: saturated body, near-black stripes, white wings. A
+ * flat colour would reveal grayscale and nothing else.
+ */
+export function drawFilterSample(
+  ctx: CanvasRenderingContext2D,
+  css: string | null,
+  size: number,
+) {
+  ctx.save();
+  // Set once, on the outer state: the motif's own save/restore inherits it, so the
+  // bee is filtered along with its background rather than sitting untouched on top.
+  if (css) ctx.filter = css;
+
+  const g = ctx.createLinearGradient(0, 0, size, size);
+  g.addColorStop(0, BRAND.pumpkin);
+  g.addColorStop(0.55, BRAND.honey);
+  g.addColorStop(1, BRAND.cream);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  drawBeeMotif(ctx, size / 2, size * 0.52, size * 0.74);
 
   ctx.restore();
 }
@@ -944,7 +982,7 @@ function drawCardBorder(
  * applies the scale itself and draws everything in design pixels.
  */
 export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
-  const { layout, theme, shots, mirror, scale, border } = input;
+  const { layout, theme, shots, mirror, scale, border, filter } = input;
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -976,9 +1014,22 @@ export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
     halves.forEach((half, h) => {
       const src = shot[roles[h]];
       if (src) {
+        // Scoped to the photograph alone: set immediately before the draw and
+        // cleared straight after, so the stock, ornaments, and footer stay untouched.
+        // `drawCover` save/restores internally, which preserves this value.
+        if (filter) ctx.filter = filter;
         drawCover(ctx, src, half, { radius: layout.radius, mirror });
+        if (filter) ctx.filter = "none";
       } else {
-        drawEmptyHalf(ctx, half, layout.radius, theme.ink, roles[h], input.logo);
+        drawEmptyHalf(
+          ctx,
+          half,
+          layout.radius,
+          theme.ink,
+          roles[h],
+          input.logo,
+          filter,
+        );
       }
     });
 

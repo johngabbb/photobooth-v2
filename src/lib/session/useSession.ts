@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BORDERS, THEMES } from "../layouts";
+import { BORDERS, FILTERS, THEMES } from "../layouts";
 import {
   HOST_CLOCK,
   PING_COUNT,
@@ -48,7 +48,7 @@ export interface Session {
   connection: ConnectionState;
   transportKind: Transport["kind"];
   settings: RoomSettings;
-  /** No-op for the guest: settings are host-authoritative. */
+  /** Either device may call this; the change is merged on both. */
   updateSettings: (patch: Partial<RoomSettings>) => void;
   setCameraReady: (ready: boolean) => void;
 
@@ -88,6 +88,7 @@ const DEFAULT_SETTINGS: RoomSettings = {
   count: 4,
   themeId: THEMES[0].id,
   borderId: BORDERS[0].id,
+  filterId: FILTERS[0].id,
 };
 
 export function useSession(code: string): Session {
@@ -199,20 +200,24 @@ export function useSession(code: string): Session {
         if (cancelled) return;
 
         if (msg.type === "settings") {
-          // The host is the writer; ignore anything that would overwrite its own state.
-          if (roleRef.current !== HOST_ROLE) {
-            settingsRef.current = msg.settings;
-            setSettings(msg.settings);
-          }
+          // Merged, not adopted: the sender only tells us what it changed, so a
+          // simultaneous edit to a different field survives instead of being
+          // overwritten by whichever message happened to land second.
+          const next = { ...settingsRef.current, ...msg.patch };
+          settingsRef.current = next;
+          setSettings(next);
           return;
         }
 
-        // Someone just arrived and does not know the settings yet.
-        if (msg.type === "hello" && roleRef.current === HOST_ROLE) {
+        // Someone just arrived and does not know the settings yet. Answered by
+        // whoever is *not* the sender rather than by the host specifically — that
+        // way a host who reloads is caught up by the guest, instead of silently
+        // resetting the room to defaults.
+        if (msg.type === "hello" && msg.from !== roleRef.current) {
           void transport.send({
             type: "settings",
-            from: HOST_ROLE,
-            settings: settingsRef.current,
+            from: roleRef.current,
+            patch: settingsRef.current,
           });
           return;
         }
@@ -434,16 +439,16 @@ export function useSession(code: string): Session {
 
 
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
-    if (roleRef.current !== HOST_ROLE) return;
-
     const next = { ...settingsRef.current, ...patch };
     settingsRef.current = next;
     setSettings(next);
 
+    // Broadcast the patch alone, never the merged object — that is what makes
+    // concurrent edits to different fields compose instead of clobber.
     void transportRef.current?.send({
       type: "settings",
-      from: HOST_ROLE,
-      settings: next,
+      from: roleRef.current,
+      patch,
     });
   }, []);
 
