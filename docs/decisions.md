@@ -249,6 +249,50 @@ connection), and ICE candidates arriving before the description they belong to
 
 ---
 
+## D29 — Filters have a software fallback, because WebKit has no `ctx.filter`
+
+**Status:** load-bearing
+
+Every filter in the app went through `CanvasRenderingContext2D.filter`. WebKit does
+not implement it: MDN's compat data has it arriving only in Safari **18**, and then
+only behind a `Canvas Filters` preference that is **off by default**. `safari_ios`
+mirrors desktop, and every browser on iOS is WebKit underneath — so on an iPhone,
+in Safari *and* Chrome *and* Firefox, `ctx.filter = "grayscale(1)"` was a silent
+no-op. Nothing threw. Photos came out untouched and all five picker swatches looked
+identical, which meant the feature was not merely broken on iOS but invisible.
+
+The fallback in `src/lib/colorFilter.ts` recolours the drawn pixels instead. It is
+worth writing because of what we happen to ship: `saturate`, `contrast`, `sepia`,
+`grayscale`, `brightness` — every one an affine transform of RGB with an exact
+definition in Filter Effects Level 1, and not a blur or drop-shadow among them. So
+this reproduces the native result rather than approximating it. Affine transforms
+also compose, so a whole filter list collapses to one matrix and the pixel loop runs
+once regardless of how many functions were chained.
+
+`renderCard` picks a route once per render via `planFilter` and the rest of the
+renderer is unchanged. An unsupported function aborts the parse and leaves the photo
+alone, which is what the native path does with a string it cannot use.
+
+Measured against Chromium's own implementation, with `ctx.filter` deleted from the
+prototype to force the software path: mean error **under 1/255 per channel** across
+the card, and identical output for `Original`.
+
+**The one difference is a one-pixel rim**, and it is structural rather than a bug to
+fix. The native filter runs *before* compositing and only ever sees the photograph;
+this one runs *after* and sees the photograph already blended into the card stock
+along its antialiased rounded edge. The pass is therefore snapped inward, leaving
+that rim unfiltered — the alternative, rounding outward, tinted the cream stock and
+drew a visible grey outline around all eight photos. Corner masking is done by hand
+because `putImageData` ignores both the clip and the transform, and it tests the
+pixel *centre* against the arc: rounding up instead stacked into a staircase of
+unfiltered colour down each corner, the only artefact in this that was visible to
+the eye.
+
+At 300 DPI that rim is 1/300 of an inch. The comparison worth making is not against
+a perfect filter but against no filter at all, which is what iOS had.
+
+---
+
 ## D24 — STUN only, no TURN
 
 **Status:** accepted limitation

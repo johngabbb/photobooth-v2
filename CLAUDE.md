@@ -121,6 +121,27 @@ which names concrete families. An unresolvable leading entry like `ui-sans-serif
 drop the whole declaration to a **serif** on some renderers — a bug that appears only
 in the exported file, never in the browser UI. See decisions D9.
 
+**`ctx.filter` does not exist on iOS.** WebKit ships it only in Safari 18 behind an
+off-by-default preference, and every browser on iOS is WebKit — so `ctx.filter = …`
+is a silent no-op there, not an error. `render.ts` therefore picks a route per render
+via `planFilter`: native where it works, and the colour-matrix pass in
+`colorFilter.ts` where it does not. Any new filter must stay an affine RGB
+operation (`saturate`, `contrast`, `sepia`, `grayscale`, `brightness`, `invert`) or
+it will work on Android and quietly do nothing on an iPhone. See D29.
+
+**Simulate WebKit to test that path** — no iPhone required. In a Playwright init
+script, remove the property the way WebKit leaves it:
+
+```js
+Object.defineProperty(CanvasRenderingContext2D.prototype, "filter", {
+  configurable: true, get: () => undefined, set() {},
+});
+```
+
+Chromium then renders both routes in one browser, so the software path can be
+diffed pixel-for-pixel against the engine's own filter. That is how the corner
+staircase and the tinted-stock rim in D29 were found.
+
 **Verify card rendering headlessly.** `renderCard` is pure with respect to its 2D
 context, so it runs under `@napi-rs/canvas` in Node — you can render a real card to a
 PNG and look at it without a browser. That is how the serif bug above was caught.
