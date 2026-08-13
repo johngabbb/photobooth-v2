@@ -14,9 +14,9 @@ export function Landing() {
         className="max-h-[38vh] w-auto"
       />
 
-      <p className="max-w-md text-sm leading-relaxed text-ink/60">
-        A photobooth for two. Open it on both your phones, and one countdown takes a
-        picture on each — every frame has both of you in it.
+      <p className="max-w-md text-sm italic leading-relaxed text-ink/60">
+        Love doesn&rsquo;t have to be in the same place to share a moment. Capture the
+        moment, bridge the distance.
       </p>
 
       <SessionActions showSolo />

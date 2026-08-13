@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CameraStage } from "@/components/CameraStage";
 import { CardCanvas } from "@/components/CardCanvas";
 import {
@@ -16,6 +17,7 @@ import {
 import { useCamera } from "@/lib/camera";
 import { captureFrame, emptyShots } from "@/lib/capture";
 import { cardFilename, downloadCard } from "@/lib/download";
+import { stageCard } from "@/lib/handoff";
 import {
   BORDERS,
   FILTERS,
@@ -28,16 +30,23 @@ import {
 } from "@/lib/layouts";
 import { slotRects } from "@/lib/render";
 import { useBrandMark } from "@/lib/useBrandMark";
+import { XL_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 import type { RenderInput, Shot } from "@/lib/types";
 
 /**
- * Phase 1: a complete single-device photobooth.
+ * The single-device photobooth.
  *
- * The capture loop is driven by an **absolute timestamp** (`captureAt`) rather than
- * a chain of relative `setTimeout`s. On one device that is merely tidy — late frames
- * self-correct instead of accumulating drift. It matters in Phase 3: synchronising
- * two devices means broadcasting exactly this timestamp and letting each device
- * schedule against its own clock, so the loop is already the right shape.
+ * Deliberately the same component as `Room` minus the second person: same schedule,
+ * same three-column shape, same live card, same handoff to the studio. Only the
+ * things that genuinely need a peer — presence, the room code, clock sync, the
+ * broadcast of settings — are absent. Anything that behaves differently here does so
+ * because being alone actually changes it, not because the two were built at
+ * different times.
+ *
+ * The capture loop is driven by an **absolute timestamp** rather than a chain of
+ * relative `setTimeout`s. Late frames self-correct instead of accumulating drift, and
+ * every shot is scheduled up front (D21) — the same shape the room needs to keep two
+ * devices in step.
  */
 
 const COUNTDOWN_MS = 3000;
@@ -46,126 +55,155 @@ const BETWEEN_MS = 1400;
 const FLASH_MS = 200;
 const PREVIEW_SCALE = 0.6;
 
-type Phase = "setup" | "running" | "review";
-
 export function Booth() {
   const camera = useCamera();
   const mark = useBrandMark();
+  const router = useRouter();
 
-  const [phase, setPhase] = useState<Phase>("setup");
   const [count, setCount] = useState(4);
   const [themeId, setThemeId] = useState(THEMES[0].id);
   const [borderId, setBorderId] = useState(BORDERS[0].id);
   const [filterId, setFilterId] = useState(FILTERS[0].id);
   const [caption, setCaption] = useState(todayLabel);
-  // Default on: the preview is mirrored, so mirroring the output means the card
-  // matches what you were looking at while posing.
-  const [mirror, setMirror] = useState(true);
   const [shots, setShots] = useState<Shot[]>(() => emptyShots(4));
   const [busy, setBusy] = useState(false);
 
-  const [captureAt, setCaptureAt] = useState<number | null>(null);
-  const [remaining, setRemaining] = useState(0);
+  /** A shoot has begun. Settings lock; the card becomes the thing on screen. */
+  const [started, setStarted] = useState(false);
+  /**
+   * A capture is queued and has not fired yet.
+   *
+   * This is what puts the camera back on screen for a retake. Without it the booth
+   * stays on the finished card — every slot is still full — and the `<video>` is not
+   * mounted at all, so the retake captures nothing and the shot never changes.
+   */
+  const [pending, setPending] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const [flash, setFlash] = useState(false);
+
+  /**
+   * Always mirrored, matching the room. The stage shows you a mirror while you pose,
+   * so a card that matches it is the least surprising result. Un-mirroring is a
+   * studio job — an edit to a finished photograph rather than a capture setting — and
+   * the studio does it per photo, which a single checkbox here never could.
+   */
+  const mirror = true;
 
   // Mirrors of state the capture loop reads. The loop runs from a rAF callback and
   // must see the latest values without being torn down and rebuilt each frame.
-  const shotsRef = useRef(shots);
-  const queueRef = useRef<number[]>([]);
+  const shotsRef = useRef<Shot[]>(shots);
+  /** Captures scheduled but not yet fired. */
+  const scheduleRef = useRef<{ shot: number; at: number }[]>([]);
 
   const layout = useMemo(() => layoutFor("solo", count), [count]);
   const theme = useMemo(() => findTheme(themeId), [themeId]);
+  const border = useMemo(() => findBorder(borderId).motif, [borderId]);
+  const filter = useMemo(() => findFilter(filterId).css, [filterId]);
+
   const slot = useMemo(() => {
     const r = slotRects(layout)[0];
     return { w: r.w, h: r.h };
   }, [layout]);
 
-  const setShotsBoth = useCallback((next: Shot[]) => {
+  const putShot = useCallback((index: number, image: CanvasImageSource) => {
+    const next = shotsRef.current.map((s, i) => (i === index ? { pamkin: image } : s));
     shotsRef.current = next;
     setShots(next);
   }, []);
 
-  const capture = useCallback(() => {
-    const video = camera.videoRef.current;
-    const frame = video ? captureFrame(video) : null;
+  // --- capture ------------------------------------------------------------
 
-    setFlash(true);
-    window.setTimeout(() => setFlash(false), FLASH_MS);
+  const fire = useCallback(
+    (index: number) => {
+      setFlash(true);
+      window.setTimeout(() => setFlash(false), FLASH_MS);
 
-    const index = queueRef.current.shift();
-    if (index === undefined) {
-      setCaptureAt(null);
-      setPhase("review");
-      return;
-    }
+      const video = camera.videoRef.current;
+      const frame = video ? captureFrame(video) : null;
+      if (!frame) return;
 
-    const next = [...shotsRef.current];
-    next[index] = { pamkin: frame };
-    shotsRef.current = next;
-    setShots(next);
+      putShot(index, frame);
+    },
+    [camera.videoRef, putShot],
+  );
 
-    if (queueRef.current.length > 0) {
-      setCaptureAt(Date.now() + BETWEEN_MS + COUNTDOWN_MS);
-    } else {
-      setCaptureAt(null);
-      setPhase("review");
-    }
-  }, [camera.videoRef]);
+  const scheduleCapture = useCallback((shot: number, delayMs: number) => {
+    scheduleRef.current = [
+      ...scheduleRef.current.filter((s) => s.shot !== shot),
+      { shot, at: Date.now() + delayMs },
+    ].sort((a, b) => a.at - b.at);
+    setStarted(true);
+    setPending(true);
+  }, []);
 
-  // The scheduler. Ticks on rAF purely to animate the countdown; the decision to
-  // fire is a comparison against wall-clock time, not a count of elapsed frames —
-  // so a stalled tab cannot desynchronise it.
+  // The scheduler. Ticks on rAF purely to animate the countdown; the decision to fire
+  // is a comparison against wall-clock time, not a count of elapsed frames — so a
+  // stalled tab cannot desynchronise it.
   useEffect(() => {
-    if (phase !== "running" || captureAt === null) return;
+    if (!pending) return;
 
     let raf = 0;
     const tick = () => {
-      const ms = captureAt - Date.now();
-      setRemaining(ms);
-      if (ms <= 0) {
-        capture();
+      const next = scheduleRef.current[0];
+      if (!next) {
+        // Queue drained. Stop the loop rather than spinning a rAF through the whole
+        // review, and hand the stage back to the finished card.
+        setRemaining(null);
+        setPending(false);
         return;
+      }
+
+      const ms = next.at - Date.now();
+      setRemaining(ms);
+
+      if (ms <= 0) {
+        scheduleRef.current = scheduleRef.current.slice(1);
+        fire(next.shot);
       }
       raf = requestAnimationFrame(tick);
     };
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [phase, captureAt, capture]);
+  }, [pending, fire]);
+
+  // --- controls -----------------------------------------------------------
 
   const startSession = useCallback(() => {
     const fresh = emptyShots(count);
     shotsRef.current = fresh;
     setShots(fresh);
-    queueRef.current = Array.from({ length: count }, (_, i) => i);
-    setPhase("running");
-    setCaptureAt(Date.now() + COUNTDOWN_MS);
-  }, [count]);
 
-  const retake = useCallback((index: number) => {
-    queueRef.current = [index];
-    setPhase("running");
-    setCaptureAt(Date.now() + COUNTDOWN_MS);
-  }, []);
+    // Every shot scheduled up front, each carrying its own absolute instant, so a
+    // late frame cannot push the rest of the strip back.
+    for (let i = 0; i < count; i++) {
+      scheduleCapture(i, COUNTDOWN_MS + i * (COUNTDOWN_MS + BETWEEN_MS));
+    }
+  }, [count, scheduleCapture]);
 
-  const cancel = useCallback(() => {
-    queueRef.current = [];
-    setCaptureAt(null);
-    setPhase("setup");
-  }, []);
-
-  const changeCount = useCallback(
-    (n: number) => {
-      setCount(n);
-      setShotsBoth(emptyShots(n));
-    },
-    [setShotsBoth],
+  const retake = useCallback(
+    (shot: number) => scheduleCapture(shot, COUNTDOWN_MS),
+    [scheduleCapture],
   );
 
   const startOver = useCallback(() => {
-    setShotsBoth(emptyShots(count));
-    setPhase("setup");
-  }, [count, setShotsBoth]);
+    scheduleRef.current = [];
+    const fresh = emptyShots(count);
+    shotsRef.current = fresh;
+    setShots(fresh);
+    setStarted(false);
+    setPending(false);
+    setRemaining(null);
+  }, [count]);
+
+  const changeCount = useCallback((n: number) => {
+    setCount(n);
+    const fresh = emptyShots(n);
+    shotsRef.current = fresh;
+    setShots(fresh);
+  }, []);
+
+  // --- derived ------------------------------------------------------------
 
   const base: Omit<RenderInput, "scale"> = useMemo(
     () => ({
@@ -175,16 +213,30 @@ export function Booth() {
       shots,
       mirror,
       logo: mark,
-      border: findBorder(borderId).motif,
-      filter: findFilter(filterId).css,
+      border,
+      filter,
     }),
-    [layout, theme, caption, shots, mirror, mark, borderId, filterId],
+    [layout, theme, caption, shots, mirror, mark, border, filter],
   );
 
   const preview: RenderInput = useMemo(
     () => ({ ...base, scale: PREVIEW_SCALE }),
     [base],
   );
+
+  function openInStudio() {
+    stageCard({
+      shots,
+      mode: layout.mode,
+      count,
+      themeId,
+      borderId,
+      filterId,
+      caption,
+      mirror,
+    });
+    router.push("/studio");
+  }
 
   async function save() {
     setBusy(true);
@@ -195,47 +247,85 @@ export function Booth() {
     }
   }
 
+  const ready = camera.status === "ready";
+  const filled = shots.filter((s) => s.pamkin).length;
+  /**
+   * Reviewing rather than the room's `complete && !pending`.
+   *
+   * With nobody else to wait for, the queue draining *is* the end of the shoot. The
+   * two read the same in the normal flow — every slot fills — but this one has no
+   * dead end if a frame fails to capture: the retake buttons appear either way,
+   * instead of being locked behind a completeness test that can no longer pass.
+   */
+  const reviewing = started && !pending;
+  // From `xl` the card has a column of its own, so the stage never swaps — you keep
+  // watching the camera while the finished card sits beside it. Narrower than that
+  // there is no room for both, and the stage still hands over when the card is done.
+  const wide = useMediaQuery(XL_QUERY);
+  const cardInStage = reviewing && !wide;
+
   const countdown =
-    phase === "running" && captureAt !== null && remaining <= COUNTDOWN_MS
+    remaining !== null && remaining <= COUNTDOWN_MS
       ? Math.max(0, Math.ceil(remaining / 1000))
       : null;
 
-  const taken = shots.filter((s) => s.pamkin).length;
-  const ready = camera.status === "ready";
-
   return (
-    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 px-6 py-5 lg:grid-cols-[1fr_18rem] lg:gap-8">
-      <div className="flex min-h-0 flex-col items-center justify-center gap-3">
-        {/* The stage gets its own flex-1 box: `max-h-full` inside resolves against
-            the space left over after the caption, not the whole column. */}
+    // On a phone the two rows must be given an explicit share. Left to auto sizing the
+    // controls' content wins and squeezes the stage to ~150px — unusable for framing a
+    // face. 3fr/2fr keeps the camera dominant and lets the controls scroll.
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-8 lg:px-6 lg:py-5 xl:max-w-none xl:grid-cols-[20rem_1fr_22rem] xl:gap-10 2xl:grid-cols-[22rem_1fr_30rem] 2xl:gap-14">
+      {/* Camera first in the DOM because on a phone it must take row 1, the 3fr one.
+          The `xl:order-*` classes below move it to the middle column on wide screens
+          without disturbing that. */}
+      <div className="flex min-h-0 flex-col items-center justify-center gap-3 xl:order-2">
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
-        {phase === "review" ? (
-          <CardCanvas
-            input={preview}
-            className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
-          />
-        ) : (
-          <CameraStage
-            camera={camera}
-            slot={slot}
-            countdown={countdown}
-            flash={flash}
-            onStart={camera.start}
-          />
-        )}
+          {cardInStage ? (
+            <CardCanvas
+              input={preview}
+              className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
+            />
+          ) : (
+            <CameraStage
+              camera={camera}
+              slot={slot}
+              countdown={countdown}
+              flash={flash}
+              onStart={camera.start}
+            />
+          )}
         </div>
 
         <p className="shrink-0 font-mono text-[11px] text-ink/50">
-          {phase === "running"
-            ? `Photo ${Math.min(taken + 1, count)} of ${count}`
-            : `${layout.physical} · ${layout.canvas.w}×${layout.canvas.h}px · 300 DPI`}
+          {/* Describes whatever is actually on the stage. Keyed off `pending` rather
+              than `started`, because at `xl` the stage goes back to being a live
+              camera once the shoot ends — counting photos there would caption a
+              viewfinder with a tally that has stopped moving. */}
+          {cardInStage
+            ? `${layout.physical} · ${layout.canvas.w}×${layout.canvas.h}px · 300 DPI`
+            : pending
+              ? `Photo ${Math.min(filled + 1, count)} of ${count}`
+              : `Live preview of one ${layout.physical} slot`}
         </p>
+
+        {/* Anchored under the camera rather than in the controls pane, which scrolls —
+            the one control you reach for should never be scrolled off. `shrink-0`
+            keeps it at full height and lets the stage above absorb the space. */}
+        {!started && (
+          <div className="shrink-0">
+            <PrimaryButton onClick={startSession} disabled={!ready}>
+              {ready ? `Take ${count} photos` : "Enable the camera first"}
+            </PrimaryButton>
+          </div>
+        )}
       </div>
 
       {/* `overflow-y-auto` makes this a scroll box on *both* axes, so the theme
           swatches' hover scale would be clipped at the edges. `px-1` gives it room. */}
-      <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1">
-        {phase === "setup" && (
+      <aside className="pane-scroll flex min-h-0 flex-col gap-5 overflow-y-auto px-1 xl:order-1">
+        {/* Properties of a shoot that has not happened yet, so they lock once it has —
+            the same rule as the room, where changing the count mid-strip would leave
+            the two devices holding different cards. */}
+        {!started && (
           <>
             <Field label="Photos">
               <Segmented
@@ -259,55 +349,11 @@ export function Booth() {
             <Field label="Filter">
               <FilterPicker value={filterId} onChange={setFilterId} />
             </Field>
-
-            <PrimaryButton onClick={startSession} disabled={!ready}>
-              {ready ? `Take ${count} photos` : "Enable the camera first"}
-            </PrimaryButton>
-
-            <p className="text-[11px] leading-relaxed text-ink/45">
-              Three-second countdown before each shot, with a short pause between.
-              Everything happens on this device — nothing is uploaded.
-            </p>
           </>
         )}
 
-        {phase === "running" && (
+        {reviewing ? (
           <>
-            <Field label="Progress">
-              <div className="flex gap-1.5">
-                {shots.map((s, i) => (
-                  <span
-                    key={i}
-                    className={`h-2 flex-1 rounded-full transition ${
-                      s.pamkin ? "bg-pumpkin" : "bg-ink/10"
-                    }`}
-                  />
-                ))}
-              </div>
-            </Field>
-
-            <p className="text-sm text-ink/60">
-              {countdown === 0 ? "Hold it…" : "Get ready — look at the camera."}
-            </p>
-
-            <SecondaryButton onClick={cancel}>Cancel</SecondaryButton>
-          </>
-        )}
-
-        {phase === "review" && (
-          <>
-            <Field label="Theme">
-              <ThemePicker value={themeId} onChange={setThemeId} />
-            </Field>
-
-            <Field label="Border">
-              <BorderPicker value={borderId} onChange={setBorderId} theme={theme} />
-            </Field>
-
-            <Field label="Filter">
-              <FilterPicker value={filterId} onChange={setFilterId} />
-            </Field>
-
             <Field label="Caption">
               <input
                 value={caption}
@@ -315,16 +361,6 @@ export function Booth() {
                 className="w-full rounded-lg border border-ink/15 bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-pumpkin"
               />
             </Field>
-
-            <label className="flex items-center gap-3 text-sm text-ink/80">
-              <input
-                type="checkbox"
-                checked={mirror}
-                onChange={(e) => setMirror(e.target.checked)}
-                className="h-4 w-4 accent-pumpkin"
-              />
-              Mirror photos
-            </label>
 
             <Field label="Retake">
               <div className="flex flex-wrap gap-2">
@@ -345,10 +381,102 @@ export function Booth() {
             <PrimaryButton onClick={save} disabled={busy}>
               {busy ? "Rendering…" : "Download PNG"}
             </PrimaryButton>
+            {/* Carries the photographs themselves, not a copy — the studio draws the
+                same canvases through the same renderer, so nothing is re-encoded and
+                the card cannot change on the way over. It is also the only place a
+                single photo can be flipped on its own. */}
+            <SecondaryButton onClick={openInStudio}>Edit in studio</SecondaryButton>
             <SecondaryButton onClick={startOver}>Start over</SecondaryButton>
           </>
+        ) : (
+          <StatusPanel
+            capturing={pending}
+            ready={ready}
+            countdown={countdown}
+            onCancel={startOver}
+          />
+        )}
+
+        {/* Below `xl` the card rides at the foot of this pane, which already scrolls
+            (D10 — the page itself never does). Scroll past the controls and the
+            template is there, filling in as shots land. Suppressed once the stage has
+            taken the card over, so it is never on screen twice. */}
+        {!wide && !cardInStage && (
+          <div className="flex shrink-0 flex-col items-center gap-2 pb-1">
+            <span className="text-xs font-semibold uppercase tracking-widest text-ink/45">
+              Your card
+            </span>
+            <CardCanvas
+              input={preview}
+              className="max-h-[60vh] max-w-full rounded-xl shadow-lg shadow-ink/15 ring-1 ring-ink/10"
+            />
+          </div>
         )}
       </aside>
+
+      {/* The card's own column, from `xl` only. Below that it is not rendered at all,
+          which keeps the aside as the second grid item on a phone. */}
+      {wide && (
+        <div className="flex min-h-0 flex-col items-center justify-center gap-3 xl:order-3">
+          <CardCanvas
+            input={preview}
+            className="min-h-0 max-h-full max-w-full rounded-xl shadow-2xl shadow-ink/20 ring-1 ring-ink/10"
+          />
+          <p className="shrink-0 font-mono text-[11px] text-ink/50">
+            {layout.physical} · {filled}/{count} filled
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Status only — the start button lives under the camera, not in this pane.
+ *
+ * The room's equivalent spends most of its lines on the other person: are they here,
+ * is their camera on, are the clocks synced. None of that exists alone, so this says
+ * the one thing left worth saying and offers the way out of a running shoot.
+ */
+function StatusPanel({
+  capturing,
+  ready,
+  countdown,
+  onCancel,
+}: {
+  capturing: boolean;
+  ready: boolean;
+  countdown: number | null;
+  onCancel: () => void;
+}) {
+  if (capturing) {
+    return (
+      <>
+        <div className="rounded-xl border border-ink/10 bg-paper/60 p-3">
+          <p className="text-sm font-medium text-ink/80">
+            {countdown === 0 ? "Hold it…" : "Look at the camera."}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-ink/50">
+            Every shot is already scheduled — the strip fills in as they fire.
+          </p>
+        </div>
+        {/* The room has no equivalent: there, stopping would mean telling the other
+            device to stop too. Alone, walking away mid-strip is routine. */}
+        <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
+      </>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-ink/10 bg-paper/60 p-3">
+      <p className="text-sm font-medium text-ink/80">
+        {ready ? "Ready when you are." : "Turn your camera on."}
+      </p>
+      <p className="mt-1 text-[11px] leading-relaxed text-ink/50">
+        {ready
+          ? "Three-second countdown before each shot, with a short pause between. Everything happens on this device — nothing is uploaded."
+          : "The booth needs the camera to frame a shot. Nothing leaves this device."}
+      </p>
     </div>
   );
 }
