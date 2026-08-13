@@ -1,4 +1,10 @@
 import { BRAND, CARD_FONT, PLACEHOLDER_TINTS, SPECIAL } from "./brand";
+import {
+  applyColorTransform,
+  parseColorFilter,
+  supportsContextFilter,
+} from "./colorFilter";
+import type { ColorTransform } from "./colorFilter";
 import { ROLES } from "./types";
 import type {
   BorderMotif,
@@ -114,7 +120,32 @@ export function drawCover(
   ctx.restore();
 }
 
-/** Placeholder fill for a half with no photo yet. */
+/**
+ * How a `filter` string will actually get applied to this context.
+ *
+ * Two routes, decided once per render: set `ctx.filter` and let the engine do it,
+ * or draw plainly and recolour the pixels afterwards. WebKit — and therefore every
+ * browser on iOS — silently ignores `ctx.filter`, so the second route is the only
+ * one that works there. See `colorFilter.ts` and decisions D29.
+ */
+interface FilterPlan {
+  /** Set before drawing and cleared after. `null` when the engine cannot do it. */
+  native: string | null;
+  /** Run over the drawn region instead. `null` when `native` is in use. */
+  matrix: ColorTransform | null;
+}
+
+const NO_FILTER: FilterPlan = { native: null, matrix: null };
+
+function planFilter(
+  ctx: CanvasRenderingContext2D,
+  css: string | null | undefined,
+): FilterPlan {
+  if (!css || css.trim() === "none") return NO_FILTER;
+  if (supportsContextFilter(ctx)) return { native: css, matrix: null };
+  return { native: null, matrix: parseColorFilter(css) };
+}
+
 /**
  * A slot with no photograph in it yet.
  *
@@ -132,7 +163,7 @@ function drawEmptyHalf(
   ink: string,
   role: Role,
   logo?: CanvasImageSource | null,
-  filter?: string | null,
+  filter: FilterPlan = NO_FILTER,
 ) {
   const short = Math.min(dest.w, dest.h);
 
@@ -143,9 +174,9 @@ function drawEmptyHalf(
   // The placeholder is filtered like a real photo would be, so the filter picker can
   // be judged before a single shot is taken. It applies to the gradient and arcs as
   // well as the mark — `ctx.filter` affects every drawing operation, not just images
-  // — and the `restore()` below clears it before the dashed edge, which is a UI cue
-  // rather than picture content and should not go grey with everything else.
-  if (filter) ctx.filter = filter;
+  // — and both routes stop before the dashed edge below, which is a UI cue rather
+  // than picture content and should not go grey with everything else.
+  if (filter.native) ctx.filter = filter.native;
 
   const tint = PLACEHOLDER_TINTS[role];
   const grad = ctx.createLinearGradient(
@@ -187,6 +218,11 @@ function drawEmptyHalf(
   }
 
   ctx.restore();
+
+  // The software route runs here rather than before `restore()`: it rewrites pixels
+  // directly, so it has to wait until everything it should recolour has been drawn —
+  // and still land before the dashed edge, which stays untinted.
+  if (filter.matrix) applyColorTransform(ctx, filter.matrix, dest, radius);
 
   // Dashed edge, drawn unclipped so the full stroke width survives. It is the one
   // cue that separates a waiting slot from a photographed one.
@@ -526,10 +562,12 @@ export function drawFilterSample(
   css: string | null,
   size: number,
 ) {
+  const plan = planFilter(ctx, css);
+
   ctx.save();
   // Set once, on the outer state: the motif's own save/restore inherits it, so the
   // bee is filtered along with its background rather than sitting untouched on top.
-  if (css) ctx.filter = css;
+  if (plan.native) ctx.filter = plan.native;
 
   const g = ctx.createLinearGradient(0, 0, size, size);
   g.addColorStop(0, BRAND.pumpkin);
@@ -541,6 +579,13 @@ export function drawFilterSample(
   drawBeeMotif(ctx, size / 2, size * 0.52, size * 0.74);
 
   ctx.restore();
+
+  // Square, so no corner mask — the swatch is rounded by CSS on the element, not by
+  // a path in here. Without this the whole picker row looks identical on an iPhone
+  // and there is no way to tell the five looks apart, let alone pick one.
+  if (plan.matrix) {
+    applyColorTransform(ctx, plan.matrix, { x: 0, y: 0, w: size, h: size });
+  }
 }
 
 /**
@@ -1037,6 +1082,10 @@ export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
 
   if (border) drawCardBorder(ctx, layout, border);
 
+  // Decided once for the whole card rather than per half: the probe writes to the
+  // context, and the answer cannot change between two slots of the same render.
+  const plan = planFilter(ctx, filter);
+
   const slots = slotRects(layout);
   const roles = rolesFor(layout);
 
@@ -1047,25 +1096,20 @@ export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
     halves.forEach((half, h) => {
       const src = shot[roles[h]];
       if (src) {
-        // Scoped to the photograph alone: set immediately before the draw and
-        // cleared straight after, so the stock, ornaments, and footer stay untouched.
-        // `drawCover` save/restores internally, which preserves this value.
-        if (filter) ctx.filter = filter;
+        // Scoped to the photograph alone, either way: the native filter is set
+        // immediately before the draw and cleared straight after, and the software
+        // pass is bounded by the half's own rounded rect. The stock, ornaments, and
+        // footer stay untouched. `drawCover` save/restores internally, which
+        // preserves `ctx.filter` across it.
+        if (plan.native) ctx.filter = plan.native;
         drawCover(ctx, src, half, {
           radius: layout.radius,
           mirror: overrides?.[halfKey(i, roles[h])] ?? mirror,
         });
-        if (filter) ctx.filter = "none";
+        if (plan.native) ctx.filter = "none";
+        if (plan.matrix) applyColorTransform(ctx, plan.matrix, half, layout.radius);
       } else {
-        drawEmptyHalf(
-          ctx,
-          half,
-          layout.radius,
-          theme.ink,
-          roles[h],
-          input.logo,
-          filter,
-        );
+        drawEmptyHalf(ctx, half, layout.radius, theme.ink, roles[h], input.logo, plan);
       }
     });
 
