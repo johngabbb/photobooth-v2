@@ -18,6 +18,7 @@ import { useFitBox } from "@/lib/useFitBox";
 export function CameraStage({
   camera,
   slot,
+  filter,
   countdown,
   flash,
   onStart,
@@ -25,6 +26,12 @@ export function CameraStage({
   camera: Camera;
   /** Dimensions of one card slot; only the ratio is used. */
   slot: { w: number; h: number };
+  /**
+   * The selected look, as a CSS filter string — the *same* value `renderCard` hands
+   * to the canvas, straight out of `layouts.ts`. `CardFilter.css` is deliberately
+   * written in the shared grammar so a look never has to be expressed twice.
+   */
+  filter?: string | null;
   /** Seconds remaining, or null when not counting down. */
   countdown: number | null;
   flash: boolean;
@@ -52,13 +59,17 @@ export function CameraStage({
         style={{ width: size.width || undefined, height: size.height || undefined }}
         className="relative flex items-center justify-center overflow-hidden rounded-2xl bg-ink shadow-2xl shadow-ink/25 ring-1 ring-ink/10"
       >
-        {/* Always mounted, so the ref exists when the stream arrives. */}
+        {/* Always mounted, so the ref exists when the stream arrives.
+            The filter goes on the video and nowhere else: the countdown, the flash
+            and the permission prompts are chrome, not picture, and would be tinted
+            along with everything else if this sat on the wrapper. */}
         <video
           ref={videoRef}
           playsInline
           muted
           autoPlay
-          className={`h-full w-full scale-x-[-1] object-cover transition-opacity duration-300 ${
+          style={{ filter: filter ?? undefined }}
+          className={`h-full w-full scale-x-[-1] object-cover transition-[opacity,filter] duration-300 ${
             live ? "opacity-100" : "opacity-0"
           }`}
         />

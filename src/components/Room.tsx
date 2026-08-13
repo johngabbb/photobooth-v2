@@ -333,6 +333,7 @@ export function Room({ code }: { code: string | null }) {
               role={role}
               slot={slot}
               splitGap={layout.splitGap}
+              filter={filter}
               peerStream={session.peerStream}
               peerVideo={session.peerVideo}
               peerPresent={Boolean(peer)}

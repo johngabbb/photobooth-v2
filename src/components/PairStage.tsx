@@ -32,6 +32,7 @@ export function PairStage({
   role,
   slot,
   splitGap,
+  filter,
   peerStream,
   peerVideo,
   peerPresent,
@@ -44,6 +45,11 @@ export function PairStage({
   /** Full slot dimensions; only the ratio is used. */
   slot: { w: number; h: number };
   splitGap: number;
+  /**
+   * The selected look, as a CSS filter string — the *same* value `renderCard` hands
+   * to the canvas. Applied to both halves, because the card filters both.
+   */
+  filter?: string | null;
   peerStream: MediaStream | null;
   peerVideo: PeerVideoState;
   peerPresent: boolean;
@@ -70,12 +76,15 @@ export function PairStage({
 
   const localHalf = (
     <>
+      {/* On the video and nowhere else — the overlays below are chrome, not picture,
+          and a filter on the wrapper would grey the "Enable camera" button too. */}
       <video
         ref={videoRef}
         playsInline
         muted
         autoPlay
-        className={`h-full w-full scale-x-[-1] object-cover transition-opacity duration-300 ${
+        style={{ filter: filter ?? undefined }}
+        className={`h-full w-full scale-x-[-1] object-cover transition-[opacity,filter] duration-300 ${
           live ? "opacity-100" : "opacity-0"
         }`}
       />
@@ -143,7 +152,12 @@ export function PairStage({
               <Half key={slotRole}>{localHalf}</Half>
             ) : (
               <Half key={slotRole}>
-                <PeerHalf stream={peerStream} state={peerVideo} present={peerPresent} />
+                <PeerHalf
+                  stream={peerStream}
+                  state={peerVideo}
+                  present={peerPresent}
+                  filter={filter}
+                />
               </Half>
             ),
           )
@@ -157,6 +171,7 @@ export function PairStage({
                 stream={peerStream}
                 state={peerVideo}
                 present={peerPresent}
+                filter={filter}
                 compact
               />
             </div>
@@ -213,11 +228,13 @@ function PeerHalf({
   stream,
   state,
   present,
+  filter,
   compact = false,
 }: {
   stream: MediaStream | null;
   state: PeerVideoState;
   present: boolean;
+  filter?: string | null;
   compact?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -249,9 +266,10 @@ function PeerHalf({
         playsInline
         muted
         autoPlay
-        // Mirrored to match the local preview and the card, which applies the same
-        // flip to both halves.
-        className={`h-full w-full scale-x-[-1] object-cover transition-opacity duration-500 ${
+        // Mirrored and filtered to match the local preview and the card, which
+        // applies both to every half.
+        style={{ filter: filter ?? undefined }}
+        className={`h-full w-full scale-x-[-1] object-cover transition-[opacity,filter] duration-500 ${
           stream ? "opacity-100" : "opacity-0"
         }`}
       />

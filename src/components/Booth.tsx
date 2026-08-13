@@ -288,6 +288,7 @@ export function Booth() {
             <CameraStage
               camera={camera}
               slot={slot}
+              filter={filter}
               countdown={countdown}
               flash={flash}
               onStart={camera.start}
