@@ -24,16 +24,16 @@ export interface Presence {
    * Guest only: has this device measured its offset from the host's clock yet?
    * The host is its own reference and publishes `true` from the start.
    *
-   * Published as presence so the host can refuse to start a countdown that the
-   * guest would convert with a garbage offset — a check that has to be based on
-   * something the host can actually observe.
+   * Published as presence so neither device starts a countdown the guest would
+   * convert with a garbage offset — a check that has to be based on something the
+   * other side can actually observe.
    */
   clockSynced: boolean;
   /** Wall-clock join time, used to break host conflicts deterministically. */
   joinedAt: number;
 }
 
-/** Room settings. Either device may change these; the countdown stays host-only. */
+/** Room settings. Either device may change these, as either may start the shoot. */
 export interface RoomSettings {
   count: number;
   themeId: string;
@@ -64,8 +64,20 @@ export type SessionMessage =
    * device converts to its own before scheduling. Broadcasting an instant rather
    * than a "go now" command is what makes the two captures simultaneous instead of
    * one-network-latency apart.
+   *
+   * `issued` is when the sender decided, also on the host's clock. Since either
+   * person may start a shoot (D32), two schedules for the same shot can exist; both
+   * devices keep the later-issued one, so they converge on the same instant rather
+   * than each keeping whichever message it happened to see last.
    */
-  | { type: "capture"; from: SessionRole; shot: number; at: number; total: number }
+  | {
+      type: "capture";
+      from: SessionRole;
+      shot: number;
+      at: number;
+      total: number;
+      issued: number;
+    }
   /**
    * One slice of a captured frame. Frames are chunked because a JPEG comfortably
    * exceeds a single realtime message, and chunking removes any need to know the
@@ -79,8 +91,15 @@ export type SessionMessage =
       total: number;
       data: string;
     }
-  /** Host tells everyone to discard shots and return to the lobby. */
-  | { type: "reset"; from: SessionRole }
+  /**
+   * Discard shots and return to the lobby. Either person may send it — cancelling a
+   * shoot has to stop the other device too, or its shutters keep firing.
+   *
+   * `issued` is on the host's clock, and lets a device drop capture messages from the
+   * round being abandoned: without it a schedule already in flight would land after
+   * the reset and quietly restart the shoot on one device only.
+   */
+  | { type: "reset"; from: SessionRole; issued: number }
   /**
    * WebRTC signalling for the live peer preview. SDP and ICE have to reach the other
    * device somehow before a peer connection can exist, and a broadcast channel is
