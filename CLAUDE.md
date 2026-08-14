@@ -64,6 +64,7 @@ src/components/   React components — all client-side
   Room.tsx        the two-person booth: presence, synchronised capture, shared card
   PairStage.tsx   the stage: both halves on desktop, own half + inset on mobile
   CameraStage.tsx live preview, countdown, flash
+  Notices.tsx     transient toasts for what the *other* person just did
   Controls.tsx    shared control primitives — use these, don't re-roll them
 src/lib/
   types.ts        domain types; Layout is the declarative card geometry

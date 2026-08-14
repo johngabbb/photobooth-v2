@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PairStage } from "@/components/PairStage";
 import { CardCanvas } from "@/components/CardCanvas";
+import { Notices, useNotices } from "@/components/Notices";
 import { QrCode } from "@/components/QrCode";
 import {
   Field,
@@ -84,9 +85,20 @@ export function Room({ code }: { code: string | null }) {
   // so a shared boolean would put "Rendering…" on the one you did not press.
   const [busy, setBusy] = useState<"card" | "story" | null>(null);
 
+  const { notices, notify } = useNotices();
+
   const shotsRef = useRef<Shot[]>(shots);
   /** Captures scheduled but not yet fired, in this device's local clock. */
   const scheduleRef = useRef<{ shot: number; at: number }[]>([]);
+  /**
+   * `started`, readable from the session handlers.
+   *
+   * They need to know whether a capture is the *first* of a shoot or one more in a
+   * running one — a retake schedules a capture too, and announcing "started the
+   * shoot" for each would be wrong. Reading the state itself would mean re-registering
+   * the handler on every change.
+   */
+  const startedRef = useRef(false);
 
   const {
     role,
@@ -96,6 +108,7 @@ export function Room({ code }: { code: string | null }) {
     setCameraReady,
     onCapture,
     onPeerFrame,
+    onPeerChange,
     onReset,
     scheduleCapture,
     sendFrame,
@@ -160,7 +173,11 @@ export function Room({ code }: { code: string | null }) {
 
   // Both devices receive the same `captureAt`, already converted to local time.
   useEffect(() => {
-    onCapture((shot, at) => {
+    onCapture((shot, at, from) => {
+      if (!startedRef.current && from !== role) {
+        notify(`${ROLE_LABEL[from]} started the shoot`);
+      }
+      startedRef.current = true;
       scheduleRef.current = [
         ...scheduleRef.current.filter((s) => s.shot !== shot),
         { shot, at },
@@ -169,7 +186,7 @@ export function Room({ code }: { code: string | null }) {
       setPending(true);
     });
     return () => onCapture(null);
-  }, [onCapture]);
+  }, [onCapture, role, notify]);
 
   useEffect(() => {
     onPeerFrame((shot, who, image) => putHalf(shot, who, image));
@@ -177,7 +194,15 @@ export function Room({ code }: { code: string | null }) {
   }, [onPeerFrame, putHalf]);
 
   useEffect(() => {
-    onReset(() => {
+    onReset((from) => {
+      // A finished card thrown away is "started over"; one abandoned mid-strip is a
+      // cancellation. Same message either way, so the wording comes from what was on
+      // screen when it landed.
+      if (startedRef.current && from !== role) {
+        const done = shotsRef.current.every((s) => s.pamkin && s.bee);
+        notify(`${ROLE_LABEL[from]} ${done ? "started over" : "cancelled the shoot"}`);
+      }
+      startedRef.current = false;
       scheduleRef.current = [];
       const fresh = emptyShots(shotsRef.current.length);
       shotsRef.current = fresh;
@@ -187,7 +212,19 @@ export function Room({ code }: { code: string | null }) {
       setRemaining(null);
     });
     return () => onReset(null);
-  }, [onReset]);
+  }, [onReset, role, notify]);
+
+  useEffect(() => {
+    onPeerChange((next, previous) => {
+      const who = next ?? previous;
+      if (!who) return;
+      // "is here" rather than "joined": the same event fires when you are the one who
+      // just walked into a room the other person was already sitting in, and there is
+      // nothing in a roster that tells the two apart.
+      notify(`${ROLE_LABEL[who.role]} ${next ? "is here" : "left the room"}`);
+    });
+    return () => onPeerChange(null);
+  }, [onPeerChange, notify]);
 
   // The scheduler. Fires on wall-clock comparison, not elapsed frames, so a stalled
   // tab cannot drift out of step with the other device.
@@ -321,6 +358,9 @@ export function Room({ code }: { code: string | null }) {
     // controls' content wins and squeezes the stage to ~150px — unusable for framing a
     // face. 3fr/2fr keeps the camera dominant and lets the controls scroll.
     <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-8 lg:px-6 lg:py-5 xl:max-w-none xl:grid-cols-[20rem_1fr_22rem] xl:gap-10 2xl:grid-cols-[22rem_1fr_30rem] 2xl:gap-14">
+      {/* Fixed-position, so it sits outside the grid it is declared in. */}
+      <Notices notices={notices} />
+
       {/* Camera first in the DOM because on a phone it must take row 1, the 3fr one.
           The `xl:order-*` classes below move it to the middle column on wide screens
           without disturbing that. */}
