@@ -107,10 +107,7 @@ export function CardStudio({ code }: { code: string | null }) {
     [layout, theme, caption, shots, mirror, flips, mark, borderId, filterId],
   );
 
-  const preview: RenderInput = useMemo(
-    () => ({ ...base, scale: PREVIEW_SCALE }),
-    [base],
-  );
+  const preview: RenderInput = useMemo(() => ({ ...base, scale: PREVIEW_SCALE }), [base]);
 
   async function download() {
     setBusy("card");
@@ -173,8 +170,7 @@ export function CardStudio({ code }: { code: string | null }) {
           />
           {fromRoom && (
             <p className="text-[11px] leading-relaxed text-ink/45">
-              Fixed by the shoot — these photos were taken as {count} on a{" "}
-              {layout.physical} card.
+              Fixed by the shoot — these photos were taken as {count} on a {layout.physical} card.
             </p>
           )}
         </Field>
@@ -199,7 +195,6 @@ export function CardStudio({ code }: { code: string | null }) {
           />
         </Field>
 
-
         <p className="text-[11px] leading-relaxed text-ink/45">
           Hover a photo on the card and click to mirror just that one.
         </p>
@@ -209,11 +204,8 @@ export function CardStudio({ code }: { code: string | null }) {
             make one" — the same three routes in as the landing page. */}
         {fromRoom ? (
           <>
-            <PrimaryButton
-              onClick={download}
-              disabled={busy !== null || shots.length === 0}
-            >
-              {busy === "card" ? "Rendering…" : "Download PNG"}
+            <PrimaryButton onClick={download} disabled={busy !== null || shots.length === 0}>
+              {busy === "card" ? "Rendering…" : "Download Photo"}
             </PrimaryButton>
             {/* Same card, matted into 1080x1920 — a card cannot be reshaped to 9:16
                 without cropping it or distorting the photographs. */}
@@ -221,7 +213,7 @@ export function CardStudio({ code }: { code: string | null }) {
               onClick={downloadStoryCopy}
               disabled={busy !== null || shots.length === 0}
             >
-              {busy === "story" ? "Rendering…" : "Download story copy"}
+              {busy === "story" ? "Rendering…" : "IG Story Copy"}
             </PrimaryButton>
           </>
         ) : (
@@ -248,4 +240,3 @@ export function CardStudio({ code }: { code: string | null }) {
     </div>
   );
 }
-
