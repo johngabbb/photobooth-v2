@@ -42,7 +42,9 @@ npx tsc --noEmit
 **`renderCard` in `src/lib/render.ts` is the only thing that draws a card.** The
 on-screen preview and the downloaded PNG both call it, differing only in `scale`.
 Never add a parallel DOM or CSS implementation of the card for previewing — the
-moment two renderers exist, the preview starts lying about the download.
+moment two renderers exist, the preview starts lying about the download. The story
+export is not an exception: `story.ts` paints a 1080x1920 background and then calls
+`renderCard` with an `origin`, so the card inside it is the card. See D31.
 
 Everything in `render.ts` is pure with respect to a 2D context: no DOM lookups, no
 React, no globals. That keeps it testable in Node and reusable on an OffscreenCanvas
@@ -68,6 +70,7 @@ src/lib/
   brand.ts        palette, app name, font stack, asset paths
   layouts.ts      card formats and themes (data, not logic)
   render.ts       canvas renderer + geometry math — the single source of truth
+  story.ts        the same card matted into a 1080x1920 story frame
   camera.ts       getUserMedia with per-failure-mode handling
   capture.ts      video frame -> canvas
   download.ts     render at 300 DPI and save

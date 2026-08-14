@@ -181,4 +181,13 @@ export interface RenderInput {
   filter?: string | null;
   /** Multiplier over the layout's design pixels. 1 = 300 DPI. */
   scale: number;
+  /**
+   * Where the card's top-left corner lands in the target canvas, in device pixels.
+   * Omitted means the origin — the card is the whole image, which is the normal case.
+   *
+   * This exists so a card can be placed *inside* a larger frame (see `story.ts`)
+   * without a second renderer: the frame paints its background, then asks
+   * `renderCard` for the same card it always draws, offset and scaled to fit.
+   */
+  origin?: { x: number; y: number };
 }

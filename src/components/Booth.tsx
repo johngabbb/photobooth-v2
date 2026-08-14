@@ -16,7 +16,7 @@ import {
 } from "@/components/Controls";
 import { useCamera } from "@/lib/camera";
 import { captureFrame, emptyShots } from "@/lib/capture";
-import { cardFilename, downloadCard } from "@/lib/download";
+import { cardFilename, downloadCard, downloadStory } from "@/lib/download";
 import { stageCard } from "@/lib/handoff";
 import {
   BORDERS,
@@ -66,7 +66,9 @@ export function Booth() {
   const [filterId, setFilterId] = useState(FILTERS[0].id);
   const [caption, setCaption] = useState(todayLabel);
   const [shots, setShots] = useState<Shot[]>(() => emptyShots(4));
-  const [busy, setBusy] = useState(false);
+  // Which export is rendering, not just whether one is: both buttons look the same,
+  // so a shared boolean would put "Rendering…" on the one you did not press.
+  const [busy, setBusy] = useState<"card" | "story" | null>(null);
 
   /** A shoot has begun. Settings lock; the card becomes the thing on screen. */
   const [started, setStarted] = useState(false);
@@ -239,11 +241,20 @@ export function Booth() {
   }
 
   async function save() {
-    setBusy(true);
+    setBusy("card");
     try {
       await downloadCard({ ...base, scale: 1 }, cardFilename(layout.id));
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function saveStory() {
+    setBusy("story");
+    try {
+      await downloadStory(base, cardFilename(layout.id, "story"));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -379,8 +390,13 @@ export function Booth() {
               </div>
             </Field>
 
-            <PrimaryButton onClick={save} disabled={busy}>
-              {busy ? "Rendering…" : "Download PNG"}
+            <PrimaryButton onClick={save} disabled={busy !== null}>
+              {busy === "card" ? "Rendering…" : "Download PNG"}
+            </PrimaryButton>
+            {/* Same card, matted into 1080x1920 — a 2:3 card cannot be reshaped to
+                9:16 without cropping it or distorting the photographs. */}
+            <PrimaryButton onClick={saveStory} disabled={busy !== null}>
+              {busy === "story" ? "Rendering…" : "Download story copy"}
             </PrimaryButton>
             {/* Carries the photographs themselves, not a copy — the studio draws the
                 same canvases through the same renderer, so nothing is re-encoded and

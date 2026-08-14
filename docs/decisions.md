@@ -703,4 +703,43 @@ to them.
 
 ---
 
+## D31 — The story export mats the card; it does not reshape it
+
+**Status:** decided
+
+An Instagram story is 1080x1920 — 9:16. A duo card is 2:3 and a solo strip is 1:3.
+Neither becomes the other, so "download it at story size" has to pick a loss:
+
+- **Distort.** Stretch the card to 9:16. Faces get taller. Not a candidate.
+- **Reframe.** Add 9:16 entries to `LAYOUTS` and re-derive the slots at that shape.
+  This is the cheap change on paper — the renderer already takes every rectangle from
+  `layout.canvas` — and for a duo card it is even a decent crop (487x532 halves at 3
+  photos, against 547x492 today). It fails on solo: a 1080-wide strip gives each slot
+  a 1.8:1 letterbox, and a 4:3 camera frame loses its top and bottom to fill it. It
+  also forks the shoot — the photos would have to be *taken* knowing which output was
+  wanted, because the crop differs.
+- **Mat.** Keep the card exactly as it prints and centre it on a 1080x1920 field.
+
+Matting wins because the story copy is then the *same card*, not a second edit of the
+same photos. `storyFit` scales it to 84% of the width and 76% of the height; the
+vertical margin is the load-bearing number, since Instagram's header and reply bar
+cover roughly the first and last 200px of the frame.
+
+The field is `mixHex(paper, ink, 0.10 → 0.26)` — the card's own stock walked toward
+its own ink — so every theme including the two dark ones gets a field that belongs to
+it, with no per-theme entry to keep in sync.
+
+This does not fork the renderer (D2). `renderStory` paints a background and then asks
+`renderCard` for the card, which is why `RenderInput` gained an optional `origin`:
+the card can be drawn at an offset instead of only at 0,0. `applyColorTransform`
+already read the translation out of the live transform, so the WebKit software filter
+path (D29) followed the card into the frame with no change — verified by rendering
+both routes offset.
+
+The story frame has no preview. It is a fixed, derived view of a card you are already
+looking at, and previewing it would mean a second canvas showing the same photos at a
+smaller size.
+
+---
+
 *(D7 predates D8 and D9; kept at its original number so references stay valid.)*

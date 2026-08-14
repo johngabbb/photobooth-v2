@@ -1056,15 +1056,19 @@ function drawCardBorder(
  * Render a complete card into `ctx`.
  *
  * The context is expected to be sized `layout.canvas * scale`; this function
- * applies the scale itself and draws everything in design pixels.
+ * applies the scale itself and draws everything in design pixels. Pass `origin` to
+ * place the card somewhere other than the top-left — the context can then be larger
+ * than the card, as it is for a story frame.
  */
 export function renderCard(ctx: CanvasRenderingContext2D, input: RenderInput) {
-  const { layout, theme, shots, mirror, scale, border, filter } = input;
+  const { layout, theme, shots, mirror, scale, border, filter, origin } = input;
   const overrides = input.mirrorOverrides;
 
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.scale(scale, scale);
+  // Set outright rather than composed onto whatever was there: everything below is
+  // in design pixels, and the caller's transform is not. `applyColorTransform` reads
+  // the translation back out of the matrix, so the software filter path follows.
+  ctx.setTransform(scale, 0, 0, scale, origin?.x ?? 0, origin?.y ?? 0);
 
   // Card stock
   ctx.fillStyle = theme.paper;

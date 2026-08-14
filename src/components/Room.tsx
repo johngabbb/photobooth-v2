@@ -20,7 +20,7 @@ import { useCreateSession } from "@/lib/session/useCreateSession";
 import { stageCard } from "@/lib/handoff";
 import { XL_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 import { captureFrame, emptyShots } from "@/lib/capture";
-import { cardFilename, downloadCard } from "@/lib/download";
+import { cardFilename, downloadCard, downloadStory } from "@/lib/download";
 import { PHOTO_COUNTS, findBorder, findFilter, findTheme, layoutFor } from "@/lib/layouts";
 import { slotRects } from "@/lib/render";
 import { useBrandMark } from "@/lib/useBrandMark";
@@ -80,7 +80,9 @@ export function Room({ code }: { code: string | null }) {
   // card matching it is the least surprising result. Un-mirroring is a studio job —
   // it is an edit to a finished photo, not a capture setting.
   const mirror = true;
-  const [busy, setBusy] = useState(false);
+  // Which export is rendering, not just whether one is: both buttons look the same,
+  // so a shared boolean would put "Rendering…" on the one you did not press.
+  const [busy, setBusy] = useState<"card" | "story" | null>(null);
 
   const shotsRef = useRef<Shot[]>(shots);
   /** Captures scheduled but not yet fired, in this device's local clock. */
@@ -281,11 +283,20 @@ export function Room({ code }: { code: string | null }) {
   }
 
   async function save() {
-    setBusy(true);
+    setBusy("card");
     try {
       await downloadCard({ ...base, scale: 1 }, cardFilename(layout.id));
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function saveStory() {
+    setBusy("story");
+    try {
+      await downloadStory(base, cardFilename(layout.id, "story"));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -495,8 +506,13 @@ export function Room({ code }: { code: string | null }) {
               </Field>
             )}
 
-            <PrimaryButton onClick={save} disabled={busy}>
-              {busy ? "Rendering…" : "Download PNG"}
+            <PrimaryButton onClick={save} disabled={busy !== null}>
+              {busy === "card" ? "Rendering…" : "Download PNG"}
+            </PrimaryButton>
+            {/* Same card, matted into 1080x1920 — a 4x6 card cannot be reshaped to
+                9:16 without cropping it or distorting the photographs. */}
+            <PrimaryButton onClick={saveStory} disabled={busy !== null}>
+              {busy === "story" ? "Rendering…" : "Download story copy"}
             </PrimaryButton>
             {/* Carries the photographs themselves, not a copy — the studio draws the
                 same canvases through the same renderer, so nothing is re-encoded and
