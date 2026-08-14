@@ -15,11 +15,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export interface Notice {
   id: number;
   text: string;
+  /** Playing its exit animation, still mounted so the animation can finish. */
+  leaving: boolean;
 }
 
 /** How long a notice stays up. Long enough to read mid-pose, short enough to ignore. */
 const TTL_MS = 4200;
-/** Older ones fall off rather than stacking up the side of the screen. */
+/** Must match the `notice-vanish` animation in globals.css. */
+const EXIT_MS = 300;
+/** Older ones fall off rather than stacking down the screen. */
 const MAX = 3;
 
 export function useNotices() {
@@ -29,10 +33,20 @@ export function useNotices() {
 
   const notify = useCallback((text: string) => {
     const id = nextId.current++;
-    setNotices((prev) => [...prev, { id, text }].slice(-MAX));
+    setNotices((prev) => [...prev, { id, text, leaving: false }].slice(-MAX));
+
+    // Two stages, because a notice cannot animate out of a DOM it has already left:
+    // it is flagged first and removed a beat later, once the exit has played.
     timers.current.push(
       window.setTimeout(() => {
-        setNotices((prev) => prev.filter((n) => n.id !== id));
+        setNotices((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, leaving: true } : n)),
+        );
+        timers.current.push(
+          window.setTimeout(() => {
+            setNotices((prev) => prev.filter((n) => n.id !== id));
+          }, EXIT_MS),
+        );
       }, TTL_MS),
     );
   }, []);
@@ -47,14 +61,16 @@ export function useNotices() {
 }
 
 /**
- * One puff of the cloud.
+ * A cloud's end.
  *
- * The silhouette is a pill with circles straddling its edges, all in the same opaque
- * fill so the overlaps leave no seam. Every dimension is in `em` and every position a
- * percentage, so the cloud keeps its shape whatever the text inside it is — an SVG
- * path would have to be redrawn for each width.
+ * The bumps along the top are a repeating background (`.notice-cloud` in
+ * globals.css) so their *number* grows with the text rather than the gaps between
+ * them — which is what a fixed set of puffs got wrong: short notices bunched, long
+ * ones spread into flat stretches. A repeat has to stop somewhere though, and it
+ * stops mid-bump, leaving a straight cut. These two circles are anchored to the ends
+ * in `em` — not at a percentage, so they hold position at any width — and cover it.
  */
-function Puff({ className }: { className: string }) {
+function Cap({ className }: { className: string }) {
   return <span aria-hidden className={`absolute rounded-full bg-pumpkin ${className}`} />;
 }
 
@@ -70,29 +86,23 @@ export function Notices({ notices }: { notices: Notice[] }) {
       // make. `pointer-events-none` keeps it from stealing a tap meant for the
       // controls underneath.
       aria-live="polite"
-      // `top-8` rather than a tighter offset: the tallest puff stands ~1.35em clear of
-      // the body it rides on, and at the start of the drift-in it is higher still, so
-      // anything less clips the cloud against the top of the window.
-      // `gap-7` for the same reason: the puffs of the cloud below would otherwise
-      // ride up into the base of the one above, and two clouds would read as one.
-      className="pointer-events-none fixed inset-x-0 top-8 z-50 flex flex-col items-center gap-7 px-4"
+      // `top-24` clears `AppHeader`, which is 89px tall on every breakpoint (a 56px
+      // mark plus its padding and rule). Anything less and the cloud sits on the logo.
+      className="pointer-events-none fixed inset-x-0 top-24 z-50 flex flex-col items-center gap-7 px-4"
     >
       {notices.map((n) => (
         // The pumpkin fill is `PrimaryButton`'s, so a notice speaks in the one accent
         // colour the room already uses.
-        <div key={n.id} className="notice-cloud relative max-w-full text-sm">
-          {/* Bumps along the top only; the base stays flat. Scalloping the underside
-              too was tried and reads as fuzz rather than as a cloud. Sizes descend
-              left to right off the tall one at 23%, which is what keeps five circles
-              from looking like a row of identical teeth. */}
-          <Puff className="-top-[0.85em] left-[6%] h-[1.9em] w-[1.9em]" />
-          <Puff className="-top-[1.35em] left-[23%] h-[2.7em] w-[2.7em]" />
-          <Puff className="-top-[1.05em] left-[45%] h-[2.25em] w-[2.25em]" />
-          <Puff className="-top-[0.8em] left-[65%] h-[1.85em] w-[1.85em]" />
-          <Puff className="-top-[0.6em] right-[6%] h-[1.55em] w-[1.55em]" />
-          {/* Last in the DOM so the body paints over the puffs' lower halves and the
+        <div
+          key={n.id}
+          data-leaving={n.leaving || undefined}
+          className="notice-cloud relative max-w-full text-sm"
+        >
+          <Cap className="-top-[1.05em] left-[0.5em] h-[2.3em] w-[2.3em]" />
+          <Cap className="-top-[0.85em] right-[0.5em] h-[1.95em] w-[1.95em]" />
+          {/* Last in the DOM so the body paints over the bumps' lower halves and the
               text sits clear of all of them. `min-w` stops a two-word notice from
-              pulling the five bumps into one blob. */}
+              being too narrow to fit a full bump between its end caps. */}
           <div className="relative min-w-[11em] rounded-full bg-pumpkin px-7 py-3.5 text-center font-semibold text-cream">
             {n.text}
           </div>
