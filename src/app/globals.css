@@ -199,3 +199,32 @@ body {
     animation: none;
   }
 }
+
+/*
+ * Room notice.
+ *
+ * Rises rather than fades in: a notice appears while you are looking at a camera, not
+ * at the corner it lands in, and movement is what catches peripheral vision. Holds at
+ * full opacity — it is removed from the DOM when it expires, so there is no exit to
+ * animate.
+ */
+@keyframes notice-rise {
+  0% {
+    transform: translateY(0.5rem);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.notice-in {
+  animation: notice-rise 0.22s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-in {
+    animation: none;
+  }
+}

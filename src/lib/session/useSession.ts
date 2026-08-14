@@ -80,7 +80,15 @@ export interface Session {
   onPeerFrame: (handler: PeerFrameHandler | null) => void;
   /** Either device: tell both to discard and start over. */
   reset: () => void;
-  onReset: (handler: (() => void) | null) => void;
+  onReset: (handler: ((from: SessionRole) => void) | null) => void;
+  /**
+   * The other person arriving or leaving.
+   *
+   * Fired from the transport's roster callback rather than watched as a change in
+   * `peers`, so it stays an event: no effect comparing this render's peer to the
+   * last, and nothing to re-fire if a roster is re-delivered unchanged.
+   */
+  onPeerChange: (handler: PeerChangeHandler | null) => void;
 
   /** The other person's camera, once the peer connection is up. */
   peerStream: MediaStream | null;
@@ -89,8 +97,19 @@ export interface Session {
   publishLocalStream: (stream: MediaStream | null) => void;
 }
 
-/** `at` is this device's local clock, already offset-corrected. */
-export type CaptureHandler = (shot: number, at: number, total: number) => void;
+/**
+ * `at` is this device's local clock, already offset-corrected. `from` is whoever
+ * scheduled it — either person may (D32), so "who started this" is not inferable.
+ */
+export type CaptureHandler = (
+  shot: number,
+  at: number,
+  from: SessionRole,
+  total: number,
+) => void;
+
+/** Fires when the *other* device joins or leaves. Both are null before either. */
+export type PeerChangeHandler = (peer: Presence | null, previous: Presence | null) => void;
 export type PeerFrameHandler = (
   shot: number,
   role: SessionRole,
@@ -165,7 +184,10 @@ export function useSession(code: string): Session {
   );
   const captureHandlerRef = useRef<CaptureHandler | null>(null);
   const peerFrameHandlerRef = useRef<PeerFrameHandler | null>(null);
-  const resetHandlerRef = useRef<(() => void) | null>(null);
+  const resetHandlerRef = useRef<((from: SessionRole) => void) | null>(null);
+  const peerChangeHandlerRef = useRef<PeerChangeHandler | null>(null);
+  /** The other device as last announced, so joins and leaves can be told apart. */
+  const otherPeerRef = useRef<Presence | null>(null);
   /**
    * Who currently owns each shot's schedule, keyed by shot index.
    *
@@ -232,6 +254,15 @@ export function useSession(code: string): Session {
         if (key !== rosterKeyRef.current) {
           rosterKeyRef.current = key;
           setPeers(roster);
+        }
+
+        // Keyed on identity, not on the roster string above: a peer turning its
+        // camera on changes that key, and nobody arrived.
+        const other = roster.find((p) => p.peerId !== peerId) ?? null;
+        const previous = otherPeerRef.current;
+        if (other?.peerId !== previous?.peerId) {
+          otherPeerRef.current = other;
+          peerChangeHandlerRef.current?.(other, previous);
         }
 
         // Host conflict: two tabs opened the same create link. Deterministically the
@@ -322,6 +353,7 @@ export function useSession(code: string): Session {
           captureHandlerRef.current?.(
             msg.shot,
             toLocalTime(msg.at, clockRef.current),
+            msg.from,
             msg.total,
           );
           return;
@@ -349,7 +381,7 @@ export function useSession(code: string): Session {
           resetIssuedRef.current = Math.max(resetIssuedRef.current, msg.issued);
           issuedRef.current.clear();
           assemblerRef.current.clear();
-          resetHandlerRef.current?.();
+          resetHandlerRef.current?.(msg.from);
           return;
         }
 
@@ -423,7 +455,7 @@ export function useSession(code: string): Session {
       });
       // Drive our own capture from the local value rather than round-tripping it
       // through the conversion, so we schedule against exactly what we measured.
-      captureHandlerRef.current?.(shot, at, total);
+      captureHandlerRef.current?.(shot, at, from, total);
     },
     [],
   );
@@ -432,11 +464,15 @@ export function useSession(code: string): Session {
     captureHandlerRef.current = handler;
   }, []);
 
+  const onPeerChange = useCallback((handler: PeerChangeHandler | null) => {
+    peerChangeHandlerRef.current = handler;
+  }, []);
+
   const onPeerFrame = useCallback((handler: PeerFrameHandler | null) => {
     peerFrameHandlerRef.current = handler;
   }, []);
 
-  const onReset = useCallback((handler: (() => void) | null) => {
+  const onReset = useCallback((handler: ((from: SessionRole) => void) | null) => {
     resetHandlerRef.current = handler;
   }, []);
 
@@ -465,7 +501,7 @@ export function useSession(code: string): Session {
     issuedRef.current.clear();
     assemblerRef.current.clear();
     void transportRef.current?.send({ type: "reset", from: roleRef.current, issued });
-    resetHandlerRef.current?.();
+    resetHandlerRef.current?.(roleRef.current);
   }, []);
 
   const peer = useMemo(
@@ -547,6 +583,7 @@ export function useSession(code: string): Session {
     onCapture,
     sendFrame,
     onPeerFrame,
+    onPeerChange,
     reset,
     onReset,
     peerStream,
