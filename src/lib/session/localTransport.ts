@@ -28,6 +28,7 @@ function samePresence(a: Presence, b: Presence): boolean {
   return (
     a.peerId === b.peerId &&
     a.role === b.role &&
+    a.name === b.name &&
     a.cameraReady === b.cameraReady &&
     a.clockSynced === b.clockSynced &&
     a.joinedAt === b.joinedAt

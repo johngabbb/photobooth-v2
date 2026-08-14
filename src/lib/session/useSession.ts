@@ -14,6 +14,7 @@ import {
   type ClockSync,
 } from "./clock";
 import { FrameAssembler, chunk, decodeFrame, encodeFrame } from "./frames";
+import { readName } from "./identity";
 import { PeerVideo, type PeerVideoState } from "./rtc";
 import { LocalTransport } from "./localTransport";
 import { SupabaseTransport, supabaseConfig } from "./supabaseTransport";
@@ -64,6 +65,12 @@ export interface Session {
   /** Either device may call this; the change is merged on both. */
   updateSettings: (patch: Partial<RoomSettings>) => void;
   setCameraReady: (ready: boolean) => void;
+  /**
+   * Publish what this person is called. Presence, not a message: it is state the
+   * other device needs whenever it looks, including on a roster it receives before
+   * anyone has said anything.
+   */
+  setName: (name: string) => void;
 
   /** Offset between this device's clock and the host's. */
   clock: ClockSync;
@@ -231,6 +238,9 @@ export function useSession(code: string): Session {
     const me: Presence = {
       role: roleRef.current,
       peerId,
+      // Whatever this device already goes by. Empty when it has never been asked —
+      // the room prompts, and `setName` publishes the answer.
+      name: readName(),
       cameraReady: false,
       clockSynced: roleRef.current === HOST_ROLE,
       joinedAt: Date.now(),
@@ -248,7 +258,7 @@ export function useSession(code: string): Session {
         // Supabase re-syncs presence liberally and the local transport gossips on a
         // heartbeat. Both can deliver an unchanged roster many times a second.
         const key = roster
-          .map((p) => `${p.peerId}:${p.role}:${p.cameraReady}:${p.clockSynced}`)
+          .map((p) => `${p.peerId}:${p.role}:${p.name}:${p.cameraReady}:${p.clockSynced}`)
           .sort()
           .join("|");
         if (key !== rosterKeyRef.current) {
@@ -568,6 +578,10 @@ export function useSession(code: string): Session {
     void transportRef.current?.setPresence({ cameraReady: ready });
   }, []);
 
+  const setName = useCallback((name: string) => {
+    void transportRef.current?.setPresence({ name });
+  }, []);
+
   return {
     role,
     isHost: role === HOST_ROLE,
@@ -578,6 +592,7 @@ export function useSession(code: string): Session {
     settings,
     updateSettings,
     setCameraReady,
+    setName,
     clock,
     scheduleCapture,
     onCapture,

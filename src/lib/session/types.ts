@@ -19,6 +19,16 @@ export interface Presence {
   role: SessionRole;
   /** Distinguishes two tabs held by the same person. */
   peerId: string;
+  /**
+   * What this person asked to be called. `""` until they have been asked, and
+   * everything that displays it falls back to the role label — so a peer on an older
+   * build, or one who has not answered the prompt yet, still reads as `Pamkin` or
+   * `Bee` rather than as a blank.
+   *
+   * The *role* is unchanged by any of this. It is the identity the card halves, the
+   * stage sides, and every wire message are keyed on; only the label is the person's.
+   */
+  name: string;
   cameraReady: boolean;
   /**
    * Guest only: has this device measured its offset from the host's clock yet?
