@@ -201,16 +201,16 @@ body {
 }
 
 /*
- * Room notice.
+ * Room notice — the cloud drifting in from off the top of the screen.
  *
- * Rises rather than fades in: a notice appears while you are looking at a camera, not
- * at the corner it lands in, and movement is what catches peripheral vision. Holds at
- * full opacity — it is removed from the DOM when it expires, so there is no exit to
+ * Moves rather than just fading: a notice appears while you are looking at a camera,
+ * not at the strip it lands in, and movement is what catches peripheral vision. It
+ * holds at full opacity — expiry removes it from the DOM, so there is no exit to
  * animate.
  */
-@keyframes notice-rise {
+@keyframes notice-drift {
   0% {
-    transform: translateY(0.5rem);
+    transform: translateY(-0.5rem);
     opacity: 0;
   }
   100% {
@@ -219,12 +219,22 @@ body {
   }
 }
 
-.notice-in {
-  animation: notice-rise 0.22s ease-out both;
+/*
+ * The shadow is a `drop-shadow` on the whole group, not a `box-shadow` per piece:
+ * box shadows would trace each circle and draw the seams the shared fill exists to
+ * hide. Two of them — a short dark one to sit the cloud on the page, and a wider warm
+ * one so it still glows in its own colour the way the buttons do. Both live here
+ * rather than in a utility because Tailwind's `drop-shadow-*` sets one variable, so a
+ * second call replaces the first instead of stacking.
+ */
+.notice-cloud {
+  animation: notice-drift 0.26s ease-out both;
+  filter: drop-shadow(0 4px 6px rgb(30 31 24 / 0.14))
+    drop-shadow(0 10px 18px rgb(250 135 48 / 0.3));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .notice-in {
+  .notice-cloud {
     animation: none;
   }
 }
