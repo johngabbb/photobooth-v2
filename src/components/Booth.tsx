@@ -321,14 +321,16 @@ export function Booth() {
 
         {/* Anchored under the camera rather than in the controls pane, which scrolls —
             the one control you reach for should never be scrolled off. `shrink-0`
-            keeps it at full height and lets the stage above absorb the space. */}
-        {!started && (
-          <div className="shrink-0">
-            <PrimaryButton onClick={startSession} disabled={!ready}>
-              {ready ? `Take ${count} photos` : "Enable the camera first"}
-            </PrimaryButton>
-          </div>
-        )}
+            keeps it at full height and lets the stage above absorb the space.
+
+            Hidden rather than unmounted once the shoot begins, for the reason spelled
+            out in `Room`: this column is centred, so removing the button slides the
+            camera down by half its height just as the countdown starts. */}
+        <div className={`shrink-0 ${started ? "invisible" : ""}`}>
+          <PrimaryButton onClick={startSession} disabled={!ready || started}>
+            {ready ? `Take ${count} photos` : "Enable the camera first"}
+          </PrimaryButton>
+        </div>
       </div>
 
       {/* `overflow-y-auto` makes this a scroll box on *both* axes, so the theme

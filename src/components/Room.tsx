@@ -460,10 +460,16 @@ export function Room({ code }: { code: string | null }) {
             `shrink-0` keeps it at full height and lets the stage above absorb the
             space instead. */}
         {/* Either person starts the shoot (D32) — whoever is ready first, rather than
-            whoever happened to make the room. */}
-        {code && !started && (
-          <div className="shrink-0">
-            <PrimaryButton onClick={startSession} disabled={!canStart}>
+            whoever happened to make the room.
+
+            Hidden rather than unmounted once the shoot begins. The column is centred,
+            so dropping the button out of it hands its height to the stage above and
+            slides the camera down by half of that — measured at 28px, right as the
+            countdown starts and you are trying to hold still. `invisible` keeps the
+            box and takes the button out of the tab order and the accessibility tree. */}
+        {code && (
+          <div className={`shrink-0 ${started ? "invisible" : ""}`}>
+            <PrimaryButton onClick={startSession} disabled={!canStart || started}>
               {canStart ? `Take ${count} photos together` : "Waiting…"}
             </PrimaryButton>
           </div>
