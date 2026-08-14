@@ -105,14 +105,8 @@ export function Room({ code }: { code: string | null }) {
   const count = settings.count;
   const layout = useMemo(() => layoutFor("duo", count), [count]);
   const theme = useMemo(() => findTheme(settings.themeId), [settings.themeId]);
-  const border = useMemo(
-    () => findBorder(settings.borderId).motif,
-    [settings.borderId],
-  );
-  const filter = useMemo(
-    () => findFilter(settings.filterId).css,
-    [settings.filterId],
-  );
+  const border = useMemo(() => findBorder(settings.borderId).motif, [settings.borderId]);
+  const filter = useMemo(() => findFilter(settings.filterId).css, [settings.filterId]);
 
   // The stage shows the whole slot now — both halves side by side — so the preview
   // is a live rehearsal of what the card will hold.
@@ -141,9 +135,7 @@ export function Room({ code }: { code: string | null }) {
   }, [count]);
 
   const putHalf = useCallback((shot: number, who: Role, image: CanvasImageSource) => {
-    const next = shotsRef.current.map((s, i) =>
-      i === shot ? { ...s, [who]: image } : s,
-    );
+    const next = shotsRef.current.map((s, i) => (i === shot ? { ...s, [who]: image } : s));
     shotsRef.current = next;
     setShots(next);
   }, []);
@@ -263,10 +255,7 @@ export function Room({ code }: { code: string | null }) {
     [layout, theme, caption, shots, mirror, mark, border, filter],
   );
 
-  const preview: RenderInput = useMemo(
-    () => ({ ...base, scale: PREVIEW_SCALE }),
-    [base],
-  );
+  const preview: RenderInput = useMemo(() => ({ ...base, scale: PREVIEW_SCALE }), [base]);
 
   function openInStudio() {
     stageCard({
@@ -380,9 +369,8 @@ export function Room({ code }: { code: string | null }) {
           <div className="rounded-xl border border-honey/60 bg-honey/15 p-3">
             <p className="text-xs font-semibold text-ink/80">Same-browser mode</p>
             <p className="mt-1 text-[11px] leading-relaxed text-ink/60">
-              No Supabase credentials, so the room runs over{" "}
-              <code>BroadcastChannel</code> — other tabs in this browser only. See
-              docs/setup.md.
+              No Supabase credentials, so the room runs over <code>BroadcastChannel</code> — other
+              tabs in this browser only. See docs/setup.md.
             </p>
           </div>
         )}
@@ -413,8 +401,8 @@ export function Room({ code }: { code: string | null }) {
                   Join session
                 </SecondaryButton>
                 <p className="text-[11px] leading-relaxed text-ink/45">
-                  Creating one gives you a code and QR to share. Your camera and card
-                  settings work down here in the meantime.
+                  Creating one gives you a code and QR to share. Your camera and card settings work
+                  down here in the meantime.
                 </p>
               </div>
             </Field>
@@ -488,7 +476,6 @@ export function Room({ code }: { code: string | null }) {
               />
             </Field>
 
-
             {isHost && (
               <Field label="Retake">
                 <div className="flex flex-wrap gap-2">
@@ -507,12 +494,12 @@ export function Room({ code }: { code: string | null }) {
             )}
 
             <PrimaryButton onClick={save} disabled={busy !== null}>
-              {busy === "card" ? "Rendering…" : "Download PNG"}
+              {busy === "card" ? "Rendering…" : "Download Photo"}
             </PrimaryButton>
             {/* Same card, matted into 1080x1920 — a 4x6 card cannot be reshaped to
                 9:16 without cropping it or distorting the photographs. */}
             <PrimaryButton onClick={saveStory} disabled={busy !== null}>
-              {busy === "story" ? "Rendering…" : "Download story copy"}
+              {busy === "story" ? "Rendering…" : "IG Story Copy"}
             </PrimaryButton>
             {/* Carries the photographs themselves, not a copy — the studio draws the
                 same canvases through the same renderer, so nothing is re-encoded and
@@ -522,8 +509,8 @@ export function Room({ code }: { code: string | null }) {
             {isHost && <SecondaryButton onClick={reset}>Start over</SecondaryButton>}
             {!isHost && (
               <p className="text-[11px] leading-relaxed text-ink/45">
-                You have the same card as Pamkin — download your own copy. Retakes and
-                starting over are the host&rsquo;s to trigger.
+                You have the same card as Pamkin — download your own copy. Retakes and starting over
+                are the host&rsquo;s to trigger.
               </p>
             )}
           </>
@@ -620,9 +607,7 @@ function StatusPanel({
   return (
     <>
       <div className="rounded-xl border border-ink/10 bg-paper/60 p-3">
-        <p className="text-sm font-medium text-ink/80">
-          {blocker ?? "Ready when you are."}
-        </p>
+        <p className="text-sm font-medium text-ink/80">{blocker ?? "Ready when you are."}</p>
         <p className="mt-1 text-[11px] leading-relaxed text-ink/50">
           {blocker === "Syncing clocks…"
             ? "Measuring the delay between your devices so both shutters fire together."

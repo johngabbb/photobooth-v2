@@ -391,12 +391,12 @@ export function Booth() {
             </Field>
 
             <PrimaryButton onClick={save} disabled={busy !== null}>
-              {busy === "card" ? "Rendering…" : "Download PNG"}
+              {busy === "card" ? "Rendering…" : "Download Photo"}
             </PrimaryButton>
             {/* Same card, matted into 1080x1920 — a 2:3 card cannot be reshaped to
                 9:16 without cropping it or distorting the photographs. */}
             <PrimaryButton onClick={saveStory} disabled={busy !== null}>
-              {busy === "story" ? "Rendering…" : "Download story copy"}
+              {busy === "story" ? "Rendering…" : "IG Story Copy"}
             </PrimaryButton>
             {/* Carries the photographs themselves, not a copy — the studio draws the
                 same canvases through the same renderer, so nothing is re-encoded and
