@@ -275,3 +275,14 @@ body {
     opacity: 1;
   }
 }
+
+/* The name modal. Same settle as a notice, slower — it is a card, not a flash. */
+.notice-pop-in {
+  animation: notice-pop 0.28s cubic-bezier(0.22, 1.05, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-pop-in {
+    animation: notice-fade 0.2s ease-out both;
+  }
+}

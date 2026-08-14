@@ -790,9 +790,14 @@ different photos of a finished card, each watching slots they did not ask for re
 **Status:** decided
 
 Both seats used to be called what the app calls them: Pamkin and Bee. Each person now
-picks a name, asked for when they create a session, when they join with a code, and —
-the one that actually matters — when they land in a room from a QR or a link, which is
-how the second person usually arrives and which passes through neither of the others.
+picks a name, asked for **once, in the room**, by a modal with no dismiss.
+
+Fields on the create and join screens were tried first and removed. The second person
+usually arrives by QR straight at `/room/CODE` and passes through neither screen, so
+the room has to ask anyway — and two implementations of one question is one too many.
+Asking in the room also puts the question where its answer is about to be used: the
+cameras and the roster are visible behind the modal, dimmed and unclickable, so you
+can see the thing you are naming yourself to.
 
 **The name is only ever a label.** `Role` still is the identity: which half of the card
 a photo lands in, which side of the stage you stand on, who a `capture` came from, how
@@ -802,15 +807,21 @@ assembler, and the RTC offer/answer direction, all to change some text.
 
 It rides in `Presence` rather than a message: it is state the other device needs
 whenever it looks, including on the first roster it sees, and presence is already
-gossiped for exactly that reason. Two consequences that are easy to miss and were both
+gossiped for exactly that reason. The name published at *join* is empty even when
+storage holds one, because nothing is confirmed until the modal is answered — a
+browser-driven run caught the alternative announcing an arrival as "Gab is here" when
+the person arriving was Mara, under a name the previous occupant of that browser had
+used. For the same reason a peer is announced when their **name** lands rather than
+when their presence does, which is why `onPeerChange` fires on a rename too. Two consequences that are easy to miss and were both
 bugs before they were fixed — `samePresence` in `localTransport` and the roster key in
 `useSession` compare field by field, and a rename is invisible to a comparison that
 does not list it.
 
-`""` is a legal name and everything falls back to the role label, so a peer who has
-not answered yet, or one on an older build, reads as `Pamkin`/`Bee` exactly as before.
-That is why the room's prompt does not gate the session: joining, the camera, and the
-clock sync all proceed behind it, and dismissing it costs only the personalisation.
+`""` is a legal name at the type level and everything falls back to the role label, so
+a peer on an older build still reads as `Pamkin`/`Bee` rather than as a blank. The
+modal itself does not accept one: it is required, and the button stays disabled until
+something is typed. What it does *not* do is gate the session — joining, the camera,
+and the clock sync all run behind it, so answering costs no setup time.
 
 Stored in `localStorage`, not `sessionStorage` — a reload mid-shoot must not drop your
 name, and a second session should not ask again. (The host claim next door is
