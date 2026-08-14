@@ -60,10 +60,12 @@ export function Notices({ notices }: { notices: Notice[] }) {
       aria-live="polite"
       className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:items-end sm:px-0"
     >
+      {/* Same fill, text, and tinted shadow as `PrimaryButton` — a notice is the room
+          speaking in the one accent colour it already uses to speak. */}
       {notices.map((n) => (
         <div
           key={n.id}
-          className="notice-in max-w-full rounded-full border border-ink/10 bg-paper/95 px-4 py-2 text-sm font-medium text-ink/80 shadow-lg shadow-ink/15 backdrop-blur"
+          className="notice-in max-w-full rounded-full bg-pumpkin px-5 py-3 text-sm font-semibold text-cream shadow-lg shadow-pumpkin/30"
         >
           {n.text}
         </div>
