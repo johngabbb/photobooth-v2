@@ -13,7 +13,7 @@ import {
   ThemePicker,
   todayLabel,
 } from "@/components/Controls";
-import { cardFilename, downloadCard } from "@/lib/download";
+import { cardFilename, downloadCard, downloadStory } from "@/lib/download";
 import {
   BORDERS,
   FILTERS,
@@ -62,7 +62,9 @@ export function CardStudio({ code }: { code: string | null }) {
   /** Photos flipped against the global default, keyed by `halfKey`. */
   const [flips, setFlips] = useState<Record<string, boolean>>({});
   const [caption, setCaption] = useState(() => handoff?.caption ?? todayLabel());
-  const [busy, setBusy] = useState(false);
+  // Which export is rendering, not just whether one is: both buttons look the same,
+  // so a shared boolean would put "Rendering…" on the one you did not press.
+  const [busy, setBusy] = useState<"card" | "story" | null>(null);
 
   const fromRoom = Boolean(handoff);
 
@@ -111,11 +113,20 @@ export function CardStudio({ code }: { code: string | null }) {
   );
 
   async function download() {
-    setBusy(true);
+    setBusy("card");
     try {
       await downloadCard({ ...base, scale: EXPORT_SCALE }, cardFilename(layout.id));
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function downloadStoryCopy() {
+    setBusy("story");
+    try {
+      await downloadStory(base, cardFilename(layout.id, "story"));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -197,9 +208,22 @@ export function CardStudio({ code }: { code: string | null }) {
             photos are synthetic, so the useful action is not "save this" but "go
             make one" — the same three routes in as the landing page. */}
         {fromRoom ? (
-          <PrimaryButton onClick={download} disabled={busy || shots.length === 0}>
-            {busy ? "Rendering…" : "Download PNG"}
-          </PrimaryButton>
+          <>
+            <PrimaryButton
+              onClick={download}
+              disabled={busy !== null || shots.length === 0}
+            >
+              {busy === "card" ? "Rendering…" : "Download PNG"}
+            </PrimaryButton>
+            {/* Same card, matted into 1080x1920 — a card cannot be reshaped to 9:16
+                without cropping it or distorting the photographs. */}
+            <PrimaryButton
+              onClick={downloadStoryCopy}
+              disabled={busy !== null || shots.length === 0}
+            >
+              {busy === "story" ? "Rendering…" : "Download story copy"}
+            </PrimaryButton>
+          </>
         ) : (
           <SessionActions showSolo />
         )}
