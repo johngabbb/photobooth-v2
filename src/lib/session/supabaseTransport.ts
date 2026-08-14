@@ -128,6 +128,9 @@ export class SupabaseTransport implements Transport {
         .map((p) => ({
           role: p.role,
           peerId: p.peerId,
+          // Defaulted rather than passed straight through: presence state can carry a
+          // payload written by a peer on an older build, which has no name at all.
+          name: p.name ?? "",
           cameraReady: p.cameraReady,
           clockSynced: p.clockSynced,
           joinedAt: p.joinedAt,

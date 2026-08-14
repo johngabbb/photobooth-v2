@@ -785,4 +785,38 @@ different photos of a finished card, each watching slots they did not ask for re
 
 ---
 
+## D33 — People get names; roles keep the identity
+
+**Status:** decided
+
+Both seats used to be called what the app calls them: Pamkin and Bee. Each person now
+picks a name, asked for when they create a session, when they join with a code, and —
+the one that actually matters — when they land in a room from a QR or a link, which is
+how the second person usually arrives and which passes through neither of the others.
+
+**The name is only ever a label.** `Role` still is the identity: which half of the card
+a photo lands in, which side of the stage you stand on, who a `capture` came from, how
+frames are keyed on the wire. Nothing under the UI knows names exist. Making the name
+the identity would have reached into `halfKey`, `ROLES` order, `render.ts`, the frame
+assembler, and the RTC offer/answer direction, all to change some text.
+
+It rides in `Presence` rather than a message: it is state the other device needs
+whenever it looks, including on the first roster it sees, and presence is already
+gossiped for exactly that reason. Two consequences that are easy to miss and were both
+bugs before they were fixed — `samePresence` in `localTransport` and the roster key in
+`useSession` compare field by field, and a rename is invisible to a comparison that
+does not list it.
+
+`""` is a legal name and everything falls back to the role label, so a peer who has
+not answered yet, or one on an older build, reads as `Pamkin`/`Bee` exactly as before.
+That is why the room's prompt does not gate the session: joining, the camera, and the
+clock sync all proceed behind it, and dismissing it costs only the personalisation.
+
+Stored in `localStorage`, not `sessionStorage` — a reload mid-shoot must not drop your
+name, and a second session should not ask again. (The host claim next door is
+deliberately the opposite: per-tab, because two tabs are two seats.) It stays editable
+from the create and join screens, which pre-fill it.
+
+---
+
 *(D7 predates D8 and D9; kept at its original number so references stay valid.)*

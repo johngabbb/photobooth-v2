@@ -65,6 +65,7 @@ src/components/   React components — all client-side
   PairStage.tsx   the stage: both halves on desktop, own half + inset on mobile
   CameraStage.tsx live preview, countdown, flash
   Notices.tsx     transient toasts for what the *other* person just did
+  NameField.tsx   "what should we call you?" — inline, and the room's prompt
   Controls.tsx    shared control primitives — use these, don't re-roll them
 src/lib/
   types.ts        domain types; Layout is the declarative card geometry
@@ -76,6 +77,7 @@ src/lib/
   capture.ts      video frame -> canvas
   download.ts     render at 300 DPI and save
   session/        room codes, transport interface, presence, useSession
+    identity.ts   the display name this device goes by, remembered across sessions
     clock.ts      offset estimation between the two devices
     frames.ts     JPEG encode, chunking, reassembly
     rtc.ts        peer video: signalling, offer/answer, ICE

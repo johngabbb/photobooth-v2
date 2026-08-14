@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PairStage } from "@/components/PairStage";
 import { CardCanvas } from "@/components/CardCanvas";
+import { NamePrompt } from "@/components/NameField";
 import { Notices, useNotices } from "@/components/Notices";
 import { QrCode } from "@/components/QrCode";
 import {
@@ -25,6 +26,7 @@ import { cardFilename, downloadCard, downloadStory } from "@/lib/download";
 import { PHOTO_COUNTS, findBorder, findFilter, findTheme, layoutFor } from "@/lib/layouts";
 import { slotRects } from "@/lib/render";
 import { useBrandMark } from "@/lib/useBrandMark";
+import { readName } from "@/lib/session/identity";
 import { useSession } from "@/lib/session/useSession";
 import { GUEST_ROLE, HOST_ROLE } from "@/lib/session/types";
 import type { RenderInput, Role, Shot } from "@/lib/types";
@@ -49,6 +51,12 @@ const BETWEEN_MS = 1600;
 const FLASH_MS = 200;
 const PREVIEW_SCALE = 0.6;
 
+/**
+ * What each seat is called when nobody has said otherwise.
+ *
+ * Still the fallback everywhere, not dead code: a peer publishes an empty name until
+ * they answer the prompt, and one on an older build never will.
+ */
 const ROLE_LABEL: Record<Role, string> = { pamkin: "Pamkin", bee: "Bee" };
 
 export function Room({ code }: { code: string | null }) {
@@ -86,6 +94,10 @@ export function Room({ code }: { code: string | null }) {
   const [busy, setBusy] = useState<"card" | "story" | null>(null);
 
   const { notices, notify } = useNotices();
+  // Read during render rather than in an effect: the room is client-only, so
+  // `localStorage` is there on the first pass (and an effect would flash the prompt
+  // at someone who has already answered it).
+  const [myName, setMyName] = useState(readName);
 
   const shotsRef = useRef<Shot[]>(shots);
   /** Captures scheduled but not yet fired, in this device's local clock. */
@@ -110,10 +122,24 @@ export function Room({ code }: { code: string | null }) {
     onPeerFrame,
     onPeerChange,
     onReset,
+    setName,
     scheduleCapture,
     sendFrame,
     reset,
   } = session;
+
+  /**
+   * Display names, resolved once. A name is only ever a label: `role` still decides
+   * which half of the card a photo lands in and which side of the stage you stand on,
+   * so nothing below the UI has to know these exist.
+   */
+  const peerRole = role === HOST_ROLE ? GUEST_ROLE : HOST_ROLE;
+  const myLabel = myName || ROLE_LABEL[role];
+  const peerLabel = peer?.name || ROLE_LABEL[peerRole];
+  const labelFor = useCallback(
+    (who: Role) => (who === role ? myLabel : peerLabel),
+    [role, myLabel, peerLabel],
+  );
 
   const count = settings.count;
   const layout = useMemo(() => layoutFor("duo", count), [count]);
@@ -175,7 +201,7 @@ export function Room({ code }: { code: string | null }) {
   useEffect(() => {
     onCapture((shot, at, from) => {
       if (!startedRef.current && from !== role) {
-        notify(`${ROLE_LABEL[from]} started the shoot`);
+        notify(`${labelFor(from)} started the shoot`);
       }
       startedRef.current = true;
       scheduleRef.current = [
@@ -186,7 +212,7 @@ export function Room({ code }: { code: string | null }) {
       setPending(true);
     });
     return () => onCapture(null);
-  }, [onCapture, role, notify]);
+  }, [onCapture, role, notify, labelFor]);
 
   useEffect(() => {
     onPeerFrame((shot, who, image) => putHalf(shot, who, image));
@@ -200,7 +226,7 @@ export function Room({ code }: { code: string | null }) {
       // screen when it landed.
       if (startedRef.current && from !== role) {
         const done = shotsRef.current.every((s) => s.pamkin && s.bee);
-        notify(`${ROLE_LABEL[from]} ${done ? "started over" : "cancelled the shoot"}`);
+        notify(`${labelFor(from)} ${done ? "started over" : "cancelled the shoot"}`);
       }
       startedRef.current = false;
       scheduleRef.current = [];
@@ -212,7 +238,7 @@ export function Room({ code }: { code: string | null }) {
       setRemaining(null);
     });
     return () => onReset(null);
-  }, [onReset, role, notify]);
+  }, [onReset, role, notify, labelFor]);
 
   useEffect(() => {
     onPeerChange((next, previous) => {
@@ -221,7 +247,7 @@ export function Room({ code }: { code: string | null }) {
       // "is here" rather than "joined": the same event fires when you are the one who
       // just walked into a room the other person was already sitting in, and there is
       // nothing in a roster that tells the two apart.
-      notify(`${ROLE_LABEL[who.role]} ${next ? "is here" : "left the room"}`);
+      notify(`${who.name || ROLE_LABEL[who.role]} ${next ? "is here" : "left the room"}`);
     });
     return () => onPeerChange(null);
   }, [onPeerChange, notify]);
@@ -358,8 +384,19 @@ export function Room({ code }: { code: string | null }) {
     // controls' content wins and squeezes the stage to ~150px — unusable for framing a
     // face. 3fr/2fr keeps the camera dominant and lets the controls scroll.
     <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 grid-rows-[3fr_2fr] gap-4 px-4 py-3 lg:grid-cols-[1fr_20rem] lg:grid-rows-1 lg:gap-8 lg:px-6 lg:py-5 xl:max-w-none xl:grid-cols-[20rem_1fr_22rem] xl:gap-10 2xl:grid-cols-[22rem_1fr_30rem] 2xl:gap-14">
-      {/* Fixed-position, so it sits outside the grid it is declared in. */}
+      {/* Fixed-position, so both sit outside the grid they are declared in. */}
       <Notices notices={notices} />
+      {/* Only with a session: without one there is nobody to be called anything to.
+          Whoever arrived by QR or link never passed the create or join screen, so this
+          is where they are asked. */}
+      {code && !myName && (
+        <NamePrompt
+          onSubmit={(name) => {
+            setMyName(name);
+            setName(name);
+          }}
+        />
+      )}
 
       {/* Camera first in the DOM because on a phone it must take row 1, the 3fr one.
           The `xl:order-*` classes below move it to the middle column on wide screens
@@ -392,7 +429,7 @@ export function Room({ code }: { code: string | null }) {
             ? `${layout.physical} · ${layout.canvas.w}×${layout.canvas.h}px · 300 DPI`
             : started
               ? `Photo ${Math.min(filled + 1, count)} of ${count}`
-              : `You are ${ROLE_LABEL[role]} · live preview of one ${layout.physical} slot`}
+              : `You are ${myLabel} · live preview of one ${layout.physical} slot`}
         </p>
 
         {/* Anchored under the cameras rather than in the controls pane, which
@@ -457,14 +494,14 @@ export function Room({ code }: { code: string | null }) {
         <Field label="Who's here">
           <div className="flex flex-col gap-2">
             <PeerRow
-              label={`${ROLE_LABEL[role]} (you)`}
+              label={`${myLabel} (you)`}
               present
               ready={cameraReady}
               host={isHost}
               synced={session.clock.synced}
             />
             <PeerRow
-              label={ROLE_LABEL[role === HOST_ROLE ? GUEST_ROLE : HOST_ROLE]}
+              label={peerLabel}
               present={Boolean(peer)}
               ready={Boolean(peer?.cameraReady)}
               host={peer?.role === HOST_ROLE}
@@ -558,8 +595,8 @@ export function Room({ code }: { code: string | null }) {
             <SecondaryButton onClick={reset}>Start over</SecondaryButton>
             {!isHost && (
               <p className="text-[11px] leading-relaxed text-ink/45">
-                You have the same card as Pamkin — download your own copy. Retaking a single photo
-                is the host&rsquo;s to trigger.
+                You have the same card as {peerLabel} — download your own copy. Retaking a single
+                photo is the host&rsquo;s to trigger.
               </p>
             )}
           </>
