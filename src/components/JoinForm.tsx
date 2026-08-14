@@ -2,15 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { NameField, useNameInput } from "@/components/NameField";
 import { CODE_LENGTH, isValidCode, normalizeCode } from "@/lib/session/code";
 
 export function JoinForm() {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const { name, setName, commit, valid: named } = useNameInput();
-
   const valid = isValidCode(code);
 
   function submit(e: React.FormEvent) {
@@ -19,9 +16,6 @@ export function JoinForm() {
       setError(`Room codes are ${CODE_LENGTH} characters.`);
       return;
     }
-    // Stored before navigating, so the room finds a name already waiting and does
-    // not ask a second time.
-    commit();
     router.push(`/room/${code}`);
   }
 
@@ -54,13 +48,9 @@ export function JoinForm() {
 
         {error && <p className="text-xs text-pumpkin">{error}</p>}
 
-        <div className="w-64">
-          <NameField value={name} onChange={setName} />
-        </div>
-
         <button
           type="submit"
-          disabled={!valid || !named}
+          disabled={!valid}
           className="rounded-full bg-pumpkin px-8 py-3 text-sm font-semibold text-cream shadow-lg shadow-pumpkin/30 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Join room

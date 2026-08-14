@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PairStage } from "@/components/PairStage";
 import { CardCanvas } from "@/components/CardCanvas";
-import { NamePrompt } from "@/components/NameField";
+import { NamePrompt } from "@/components/NamePrompt";
 import { Notices, useNotices } from "@/components/Notices";
 import { QrCode } from "@/components/QrCode";
 import {
@@ -94,10 +94,17 @@ export function Room({ code }: { code: string | null }) {
   const [busy, setBusy] = useState<"card" | "story" | null>(null);
 
   const { notices, notify } = useNotices();
-  // Read during render rather than in an effect: the room is client-only, so
-  // `localStorage` is there on the first pass (and an effect would flash the prompt
-  // at someone who has already answered it).
+  /**
+   * The name in use, and whether it has been confirmed *for this room*.
+   *
+   * Two pieces of state on purpose. A remembered name pre-fills the prompt, but it
+   * does not answer it: the question is asked on every entry to a room, because the
+   * person at the keyboard is not necessarily the person who answered last time, and
+   * because "what are we calling you today" is part of arriving. Skipping it whenever
+   * storage happened to hold something meant the prompt was never seen twice.
+   */
   const [myName, setMyName] = useState(readName);
+  const [named, setNamed] = useState(false);
 
   const shotsRef = useRef<Shot[]>(shots);
   /** Captures scheduled but not yet fired, in this device's local clock. */
@@ -111,6 +118,8 @@ export function Room({ code }: { code: string | null }) {
    * the handler on every change.
    */
   const startedRef = useRef(false);
+  /** The peer whose arrival has been announced, so it is announced exactly once. */
+  const announcedRef = useRef<string | null>(null);
 
   const {
     role,
@@ -242,12 +251,25 @@ export function Room({ code }: { code: string | null }) {
 
   useEffect(() => {
     onPeerChange((next, previous) => {
-      const who = next ?? previous;
-      if (!who) return;
+      if (!next) {
+        // Only if we said they arrived, so an unnamed passer-by cannot leave a room
+        // it was never announced in.
+        if (previous && announcedRef.current === previous.peerId) {
+          notify(`${previous.name || ROLE_LABEL[previous.role]} left the room`);
+        }
+        announcedRef.current = null;
+        return;
+      }
+
+      // Announced when the *name* lands, not when the presence does. They are on the
+      // page a few seconds before they have finished saying who they are, and an
+      // arrival announced early carries whatever their device last remembered.
+      if (announcedRef.current === next.peerId || !next.name) return;
+      announcedRef.current = next.peerId;
       // "is here" rather than "joined": the same event fires when you are the one who
-      // just walked into a room the other person was already sitting in, and there is
+      // walked into a room the other person was already sitting in, and there is
       // nothing in a roster that tells the two apart.
-      notify(`${who.name || ROLE_LABEL[who.role]} ${next ? "is here" : "left the room"}`);
+      notify(`${next.name} is here`);
     });
     return () => onPeerChange(null);
   }, [onPeerChange, notify]);
@@ -387,12 +409,13 @@ export function Room({ code }: { code: string | null }) {
       {/* Fixed-position, so both sit outside the grid they are declared in. */}
       <Notices notices={notices} />
       {/* Only with a session: without one there is nobody to be called anything to.
-          Whoever arrived by QR or link never passed the create or join screen, so this
-          is where they are asked. */}
-      {code && !myName && (
+          Every route into a room lands here — created, joined by code, or opened from
+          a QR — so this one prompt covers all of them. */}
+      {code && !named && (
         <NamePrompt
           onSubmit={(name) => {
             setMyName(name);
+            setNamed(true);
             setName(name);
           }}
         />

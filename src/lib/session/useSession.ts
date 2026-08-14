@@ -14,7 +14,6 @@ import {
   type ClockSync,
 } from "./clock";
 import { FrameAssembler, chunk, decodeFrame, encodeFrame } from "./frames";
-import { readName } from "./identity";
 import { PeerVideo, type PeerVideoState } from "./rtc";
 import { LocalTransport } from "./localTransport";
 import { SupabaseTransport, supabaseConfig } from "./supabaseTransport";
@@ -115,7 +114,13 @@ export type CaptureHandler = (
   total: number,
 ) => void;
 
-/** Fires when the *other* device joins or leaves. Both are null before either. */
+/**
+ * Fires when the other device joins, leaves, or first says what it is called.
+ *
+ * Naming is part of arriving, not a later edit: presence exists from the moment they
+ * open the page, seconds before they finish typing. A consumer that wants to announce
+ * an arrival waits for the name, so this has to fire again when it lands.
+ */
 export type PeerChangeHandler = (peer: Presence | null, previous: Presence | null) => void;
 export type PeerFrameHandler = (
   shot: number,
@@ -238,9 +243,11 @@ export function useSession(code: string): Session {
     const me: Presence = {
       role: roleRef.current,
       peerId,
-      // Whatever this device already goes by. Empty when it has never been asked —
-      // the room prompts, and `setName` publishes the answer.
-      name: readName(),
+      // Empty on purpose, even when storage holds a name from last time: the room
+      // asks on every entry, so nothing is confirmed yet. Publishing the remembered
+      // one here announced arrivals under a name the person had not chosen — and on
+      // a shared browser, under somebody else's. `setName` follows the prompt.
+      name: "",
       cameraReady: false,
       clockSynced: roleRef.current === HOST_ROLE,
       joinedAt: Date.now(),
@@ -270,7 +277,7 @@ export function useSession(code: string): Session {
         // camera on changes that key, and nobody arrived.
         const other = roster.find((p) => p.peerId !== peerId) ?? null;
         const previous = otherPeerRef.current;
-        if (other?.peerId !== previous?.peerId) {
+        if (other?.peerId !== previous?.peerId || other?.name !== previous?.name) {
           otherPeerRef.current = other;
           peerChangeHandlerRef.current?.(other, previous);
         }

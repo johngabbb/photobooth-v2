@@ -65,7 +65,7 @@ src/components/   React components — all client-side
   PairStage.tsx   the stage: both halves on desktop, own half + inset on mobile
   CameraStage.tsx live preview, countdown, flash
   Notices.tsx     transient toasts for what the *other* person just did
-  NameField.tsx   "what should we call you?" — inline, and the room's prompt
+  NamePrompt.tsx  required "what should we call you?" modal over the room
   Controls.tsx    shared control primitives — use these, don't re-roll them
 src/lib/
   types.ts        domain types; Layout is the declarative card geometry

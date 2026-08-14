@@ -1,27 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { NameField, useNameInput } from "@/components/NameField";
 import { useCreateSession } from "@/lib/session/useCreateSession";
 
 /** The two ways into a room from the landing page: create one, or join one. */
 export function SessionActions({ showSolo = false }: { showSolo?: boolean }) {
   const { create, creating } = useCreateSession();
-  const { name, setName, commit, valid } = useNameInput();
 
   return (
-    <div className="flex w-full max-w-xs flex-col items-center gap-3">
-      {/* Asked here rather than after the room opens, so the code and the QR can be
-          handed over already wearing a name. */}
-      <NameField value={name} onChange={setName} />
-
+    <div className="flex flex-col items-center gap-3">
+      {/* No name is asked for here. The room asks, over the room itself, because the
+          person arriving by QR never passes through this page — one ask, one place. */}
       <button
         type="button"
-        onClick={() => {
-          commit();
-          create();
-        }}
-        disabled={creating || !valid}
+        onClick={create}
+        disabled={creating}
         className="rounded-full bg-pumpkin px-8 py-3.5 text-base font-semibold text-cream shadow-lg shadow-pumpkin/30 transition duration-200 ease-out enabled:hover:-translate-y-0.5 enabled:hover:shadow-xl enabled:hover:shadow-pumpkin/45 enabled:hover:brightness-105 enabled:active:translate-y-0 enabled:active:shadow-md focus-visible:ring-2 focus-visible:ring-pumpkin focus-visible:ring-offset-2 focus-visible:ring-offset-cream focus-visible:outline-none motion-reduce:transition-none motion-reduce:enabled:hover:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {creating ? "Creating room…" : "Start a session"}
