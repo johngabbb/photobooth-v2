@@ -9,6 +9,7 @@ import {
   UNSYNCED,
   refine,
   sampleFrom,
+  toHostTime,
   toLocalTime,
   type ClockSync,
 } from "./clock";
@@ -67,8 +68,8 @@ export interface Session {
   /** Offset between this device's clock and the host's. */
   clock: ClockSync;
   /**
-   * Fire a synchronised shot. Host only — it broadcasts the instant and schedules
-   * its own capture from the same value.
+   * Fire a synchronised shot. Either device may call it: the caller broadcasts the
+   * instant and schedules its own capture from the same value.
    */
   scheduleCapture: (shot: number, delayMs: number, total: number) => void;
   /** Called on both devices at the agreed instant, with the shot index. */
@@ -77,7 +78,7 @@ export interface Session {
   sendFrame: (shot: number, canvas: HTMLCanvasElement) => Promise<void>;
   /** Fires when the peer's frame for a shot has fully arrived and decoded. */
   onPeerFrame: (handler: PeerFrameHandler | null) => void;
-  /** Host: tell both devices to discard and start over. */
+  /** Either device: tell both to discard and start over. */
   reset: () => void;
   onReset: (handler: (() => void) | null) => void;
 
@@ -95,6 +96,36 @@ export type PeerFrameHandler = (
   role: SessionRole,
   image: HTMLImageElement,
 ) => void;
+
+/**
+ * Should this capture be scheduled, given what is already scheduled for that shot?
+ * Records the winner as a side effect.
+ *
+ * Both devices run this over the same messages and reach the same answer without
+ * talking to each other, which is what makes two people pressing start at the same
+ * moment converge instead of splitting the strip across two schedules. Later intent
+ * wins — a retake is always issued after the shot it replaces — and an exact tie in
+ * the same millisecond falls to a fixed role order, arbitrary but identical on both
+ * sides. A duplicate of the current winner loses to itself, so replays are ignored.
+ */
+function winsSchedule(
+  current: Map<number, { issued: number; from: SessionRole }>,
+  resetIssued: number,
+  shot: number,
+  issued: number,
+  from: SessionRole,
+): boolean {
+  // Issued before the last reset: a straggler from a round somebody cancelled.
+  if (issued <= resetIssued) return false;
+
+  const prev = current.get(shot);
+  if (prev && (prev.issued > issued || (prev.issued === issued && prev.from >= from))) {
+    return false;
+  }
+
+  current.set(shot, { issued, from });
+  return true;
+}
 
 const DEFAULT_SETTINGS: RoomSettings = {
   count: 4,
@@ -135,6 +166,17 @@ export function useSession(code: string): Session {
   const captureHandlerRef = useRef<CaptureHandler | null>(null);
   const peerFrameHandlerRef = useRef<PeerFrameHandler | null>(null);
   const resetHandlerRef = useRef<(() => void) | null>(null);
+  /**
+   * Who currently owns each shot's schedule, keyed by shot index.
+   *
+   * Either person may start a shoot (D32), so two schedules for the same shot can be
+   * in flight at once — and each device would otherwise keep whichever message it saw
+   * last, which is not necessarily the same one. Both apply the identical rule
+   * instead, so they converge without a round trip.
+   */
+  const issuedRef = useRef(new Map<number, { issued: number; from: SessionRole }>());
+  /** Host-clock instant of the most recent reset, so its round's stragglers can be dropped. */
+  const resetIssuedRef = useRef(0);
   const assemblerRef = useRef(new FrameAssembler());
   const pingsRef = useRef(new Map<string, number>());
   const rtcRef = useRef<PeerVideo | null>(null);
@@ -266,6 +308,17 @@ export function useSession(code: string): Session {
         // The shutter instant, expressed on the host's clock. Convert to this
         // device's clock before handing it on — for the host that is a no-op.
         if (msg.type === "capture") {
+          if (
+            !winsSchedule(
+              issuedRef.current,
+              resetIssuedRef.current,
+              msg.shot,
+              msg.issued,
+              msg.from,
+            )
+          ) {
+            return;
+          }
           captureHandlerRef.current?.(
             msg.shot,
             toLocalTime(msg.at, clockRef.current),
@@ -293,6 +346,8 @@ export function useSession(code: string): Session {
         }
 
         if (msg.type === "reset") {
+          resetIssuedRef.current = Math.max(resetIssuedRef.current, msg.issued);
+          issuedRef.current.clear();
           assemblerRef.current.clear();
           resetHandlerRef.current?.();
           return;
@@ -348,19 +403,26 @@ export function useSession(code: string): Session {
 
   const scheduleCapture = useCallback(
     (shot: number, delayMs: number, total: number) => {
-      if (roleRef.current !== HOST_ROLE) return;
-
-      // Host clock is the reference, so "now + delay" needs no correction here.
+      // Local clock for us, host clock on the wire. For the host the conversion is a
+      // no-op; for the guest it is the whole point of the offset in `clock.ts`.
       const at = Date.now() + delayMs;
+      const issued = toHostTime(Date.now(), clockRef.current);
+      const from = roleRef.current;
+
+      if (!winsSchedule(issuedRef.current, resetIssuedRef.current, shot, issued, from)) {
+        return;
+      }
+
       void transportRef.current?.send({
         type: "capture",
-        from: HOST_ROLE,
+        from,
         shot,
-        at,
+        at: toHostTime(at, clockRef.current),
         total,
+        issued,
       });
-      // Drive our own capture from the identical value rather than a second
-      // `Date.now()`, so host and guest are working from one number.
+      // Drive our own capture from the local value rather than round-tripping it
+      // through the conversion, so we schedule against exactly what we measured.
       captureHandlerRef.current?.(shot, at, total);
     },
     [],
@@ -398,9 +460,11 @@ export function useSession(code: string): Session {
   }, []);
 
   const reset = useCallback(() => {
-    if (roleRef.current !== HOST_ROLE) return;
+    const issued = toHostTime(Date.now(), clockRef.current);
+    resetIssuedRef.current = Math.max(resetIssuedRef.current, issued);
+    issuedRef.current.clear();
     assemblerRef.current.clear();
-    void transportRef.current?.send({ type: "reset", from: HOST_ROLE });
+    void transportRef.current?.send({ type: "reset", from: roleRef.current, issued });
     resetHandlerRef.current?.();
   }, []);
 

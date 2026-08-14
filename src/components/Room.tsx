@@ -305,7 +305,11 @@ export function Room({ code }: { code: string | null }) {
   const waitingForPeer = started && !complete && !pending;
 
   const bothReady = cameraReady && Boolean(peer?.cameraReady);
-  const canStart = bothReady && Boolean(peer?.clockSynced) && isHost;
+  // Both clocks, not just the guest's: whoever presses start converts its own "now"
+  // into host time, so the *presser* has to be synced too. The host is its own
+  // reference and reports synced from the start, which leaves this reading exactly as
+  // it did when only the host could start.
+  const canStart = bothReady && Boolean(peer?.clockSynced) && session.clock.synced;
 
   const countdown =
     remaining !== null && remaining <= COUNTDOWN_MS
@@ -355,7 +359,9 @@ export function Room({ code }: { code: string | null }) {
             scrolls — the one control you reach for should never be scrolled off.
             `shrink-0` keeps it at full height and lets the stage above absorb the
             space instead. */}
-        {code && isHost && !started && (
+        {/* Either person starts the shoot (D32) — whoever is ready first, rather than
+            whoever happened to make the room. */}
+        {code && !started && (
           <div className="shrink-0">
             <PrimaryButton onClick={startSession} disabled={!canStart}>
               {canStart ? `Take ${count} photos together` : "Waiting…"}
@@ -430,7 +436,8 @@ export function Room({ code }: { code: string | null }) {
         {!started && (
           <>
             {/* Both people can change these — every edit is broadcast as a patch
-                and merged on both devices. Only the countdown stays host-only. */}
+                and merged on both devices. Retaking one photo is now the only thing
+                left that the host alone can do. */}
             <Field label="Photos">
               <Segmented
                 options={PHOTO_COUNTS.map((n) => ({
@@ -506,11 +513,13 @@ export function Room({ code }: { code: string | null }) {
                 the card cannot change on the way over. Available to both people:
                 each holds their own version of the card. */}
             <SecondaryButton onClick={openInStudio}>Edit in studio</SecondaryButton>
-            {isHost && <SecondaryButton onClick={reset}>Start over</SecondaryButton>}
+            {/* Same call as Cancel, so it follows the same authority: either person
+                may throw the shoot away, on both devices. */}
+            <SecondaryButton onClick={reset}>Start over</SecondaryButton>
             {!isHost && (
               <p className="text-[11px] leading-relaxed text-ink/45">
-                You have the same card as Pamkin — download your own copy. Retakes and starting over
-                are the host&rsquo;s to trigger.
+                You have the same card as Pamkin — download your own copy. Retaking a single photo
+                is the host&rsquo;s to trigger.
               </p>
             )}
           </>
@@ -521,9 +530,12 @@ export function Room({ code }: { code: string | null }) {
             peerPresent={Boolean(peer)}
             bothReady={bothReady}
             peerSynced={Boolean(peer?.clockSynced)}
-            isHost={isHost}
             rttMs={session.clock.rttMs}
             synced={session.clock.synced}
+            // Either person, like starting (D32). It is the same broadcast `reset` as
+            // "Start over" — cancelling has to stop the *other* device too, or its
+            // shutters keep firing on the old schedule.
+            onCancel={reset}
           />
         )}
 
@@ -568,31 +580,37 @@ function StatusPanel({
   peerPresent,
   bothReady,
   peerSynced,
-  isHost,
   rttMs,
   synced,
+  onCancel,
 }: {
   started: boolean;
   waitingForPeer: boolean;
   peerPresent: boolean;
   bothReady: boolean;
   peerSynced: boolean;
-  isHost: boolean;
   rttMs: number;
   synced: boolean;
+  onCancel: () => void;
 }) {
   if (started) {
     return (
-      <div className="rounded-xl border border-ink/10 bg-paper/60 p-3">
-        <p className="text-sm font-medium text-ink/80">
-          {waitingForPeer ? "Waiting for the other half…" : "Look at your camera."}
-        </p>
-        <p className="mt-1 text-[11px] leading-relaxed text-ink/50">
-          {waitingForPeer
-            ? "Both shutters fired. The other device's photo is still arriving."
-            : "Both cameras fire on the same countdown."}
-        </p>
-      </div>
+      <>
+        <div className="rounded-xl border border-ink/10 bg-paper/60 p-3">
+          <p className="text-sm font-medium text-ink/80">
+            {waitingForPeer ? "Waiting for the other half…" : "Look at your camera."}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-ink/50">
+            {waitingForPeer
+              ? "Both shutters fired. The other device's photo is still arriving."
+              : "Both cameras fire on the same countdown."}
+          </p>
+        </div>
+        {/* Also the way out of a half that never arrives: until every slot fills,
+            `showCard` stays false and "Start over" is not on screen, so without this
+            a dropped frame left the room with nothing to press. */}
+        <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
+      </>
     );
   }
 
@@ -613,9 +631,7 @@ function StatusPanel({
             ? "Measuring the delay between your devices so both shutters fire together."
             : blocker
               ? "Share the code or QR above. Each of you needs your own camera on."
-              : isHost
-                ? "One countdown, both cameras. Every photo has both of you in it."
-                : "Pamkin starts the countdown."}
+              : "One countdown, both cameras. Either of you can start it, and every photo has both of you in it."}
         </p>
         {synced && rttMs > 0 && (
           <p className="mt-1.5 font-mono text-[10px] text-ink/35">

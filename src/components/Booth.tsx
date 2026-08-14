@@ -477,8 +477,8 @@ function StatusPanel({
             Every shot is already scheduled — the strip fills in as they fire.
           </p>
         </div>
-        {/* The room has no equivalent: there, stopping would mean telling the other
-            device to stop too. Alone, walking away mid-strip is routine. */}
+        {/* The room's equivalent goes through the broadcast reset, because there
+            stopping has to stop the other device too. Alone this is purely local. */}
         <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
       </>
     );

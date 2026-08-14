@@ -63,9 +63,10 @@ tens to hundreds of milliseconds, and unpredictably so. The fix is standard:
 1. **Estimate clock offset on join.** The guest pings the host through the channel
    ~5 times. Keep the sample with the lowest round-trip time, since that one has the
    least queuing noise, and take `offset ≈ hostTime - (guestTime - rtt/2)`.
-2. **Broadcast an absolute time, not an imperative.** The host sends `captureAt` as a
-   timestamp. Each device converts to its own corrected clock and schedules a
-   `setTimeout`. Late-arriving messages self-correct; a dropped message is detectable.
+2. **Broadcast an absolute time, not an imperative.** Whichever device starts the
+   shoot sends `captureAt` as a timestamp on the *host's* clock. Each device converts
+   to its own corrected clock and schedules a `setTimeout`. Late-arriving messages
+   self-correct; a dropped message is detectable.
 3. **Drive the countdown from the same timestamp**, so both screens tick in step and
    the two people are actually posing together.
 4. **Capture locally.** Draw the `<video>` element straight to an offscreen canvas.
@@ -96,9 +97,12 @@ waiting on. Storage first; revisit only if it measurably drags.
 
 ## Session model
 
-The **host** is authoritative. It owns photo count, layout, theme, and the countdown.
-The guest mirrors host state and may only signal readiness or request a retake. One
-writer means no conflict resolution — worth far more than the flexibility given up.
+The **host** is the clock reference — every `captureAt` on the wire is in its time —
+and the only one who can retake a single photo. Everything else is shared: both
+devices edit the settings as patches that merge (D28), and either may start or cancel
+a shoot (D32). Concurrency is resolved by rule rather than by a single writer: for
+settings, whoever touched a field last owns that field; for the countdown, both sides
+independently keep the later-issued schedule for each shot.
 
 ```
 /                    landing — start a session

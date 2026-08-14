@@ -668,7 +668,7 @@ CSS block from the TypeScript at build time, not to make the renderer read the D
 
 ## D28 — Both people edit settings; only the host fires the shutter
 
-**Status:** decided, supersedes half of D6
+**Status:** the shutter half is superseded by D32; the settings half stands
 
 Either device can change photo count, theme, border, and filter. Starting the
 countdown, retaking a shot, and starting over stay host-only.
@@ -739,6 +739,49 @@ both routes offset.
 The story frame has no preview. It is a fixed, derived view of a card you are already
 looking at, and previewing it would mean a second canvas showing the same photos at a
 smaller size.
+
+---
+
+## D32 — Either person may start or cancel a shoot
+
+**Status:** decided, supersedes the shutter half of D28
+
+D28 kept the countdown host-only on the grounds that two writers means "a double-
+started session and two conflicting `captureAt` values". That risk is real, but the
+cost of the restriction is paid every session: the host is just whoever happened to
+create the room, and the other person — who can see both cameras, and often the one
+who is actually ready — could only wait to be photographed.
+
+Both may now start, and either may cancel. Cancelling is the existing broadcast
+`reset`, because stopping locally would leave the other device firing on the old
+schedule.
+
+The conflict D28 named is resolved by making the two devices agree without talking.
+Every `capture` message carries `issued`, the sender's decision instant on the host's
+clock, and both devices apply one rule per shot in `winsSchedule`:
+
+- later `issued` wins — a retake is always issued after the shot it replaces, so this
+  is the same rule for both cases;
+- an exact millisecond tie falls to a fixed role order, evaluated identically on both
+  sides;
+- anything issued at or before the last `reset` is dropped, which is what stops a
+  schedule already in flight from restarting the shoot on one device after somebody
+  cancels.
+
+Two people pressing start half a second apart therefore both converge on the later
+schedule, rather than each keeping whichever message it happened to see last. No
+round trip, no leader election, no lock.
+
+The clock work is unchanged in substance but now runs in both directions: the
+scheduler converts its local instant *to* host time with `toHostTime` before sending,
+where before only the host scheduled and the conversion was a no-op it could skip.
+`canStart` gained the presser's own `clock.synced` for the same reason — a guest
+starting a countdown before it has measured its offset would send a garbage instant.
+For the host that term is true from the start, so the gate reads exactly as it did.
+
+Retaking a single photo is still host-only. It is the one control where two writers
+would be genuinely confusing rather than merely concurrent — two people retaking
+different photos of a finished card, each watching slots they did not ask for refill.
 
 ---
 
