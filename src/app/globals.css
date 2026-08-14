@@ -201,67 +201,35 @@ body {
 }
 
 /*
- * Room notice — an orange cloud.
+ * Room notice.
  *
- * The bumps along the top are three repeating radial-gradients rather than a fixed
- * set of circles, because the cloud has to be right at any width: a repeat adds
- * *more* bumps as the text grows, where placed circles just spread further apart and
- * leave flat stretches between them. The three periods (3.1em, 2.05em, 1.3em) do not
- * divide into each other, so the silhouette varies for a long way before it repeats —
- * one uniform row reads as a scalloped doily, not a cloud.
+ * Shape and colour are `PrimaryButton`'s and live on the element; only the motion is
+ * here, because it needs keyframes and a second rule for the exit.
  *
- * The strip is inset from both ends and stops mid-bump; the two `Cap` circles in
- * Notices.tsx cover that cut. The underside stays flat: scalloping it too was tried
- * and reads as fuzz.
+ * In and out both animate. The entrance overshoots slightly and settles — a notice
+ * arrives while you are looking at a camera, not at the strip it lands in, and a pop
+ * is what catches peripheral vision. The exit is the same motion reversed and
+ * quicker, so a notice is never simply yanked off the screen.
  */
-.notice-cloud {
-  animation: notice-pop 0.34s cubic-bezier(0.22, 1.05, 0.36, 1) both;
+.notice-pill {
   /*
-   * A `drop-shadow` on the whole group, not a `box-shadow` per piece: box shadows
-   * would trace each circle and draw the seams the shared fill exists to hide. Two of
-   * them — a short dark one to sit the cloud on the page, and a wider warm one so it
-   * still glows in its own colour the way the buttons do. Both live here rather than
-   * in a utility because Tailwind's `drop-shadow-*` sets one variable, so a second
-   * call replaces the first instead of stacking.
+   * A lighter pumpkin: the button's colour thinned toward the cream page, the same
+   * way `.pane-scroll` derives its states, so it stays one hue rather than becoming a
+   * second orange nobody sampled. Mixed in oklab, which keeps the midpoint from going
+   * muddy the way sRGB does.
+   *
+   * The text turns to ink at this lightness — cream on it drops to roughly 2:1 and
+   * the notice becomes unreadable at a glance, which for a message you see for four
+   * seconds is the whole job.
    */
-  filter: drop-shadow(0 4px 6px rgb(30 31 24 / 0.14))
-    drop-shadow(0 10px 18px rgb(250 135 48 / 0.3));
+  background-color: color-mix(in oklab, var(--color-pumpkin) 72%, var(--color-cream));
+  animation: notice-pop 0.34s cubic-bezier(0.22, 1.05, 0.36, 1) both;
 }
 
-.notice-cloud::before {
-  content: "";
-  position: absolute;
-  left: 2.4em;
-  right: 2.4em;
-  bottom: 100%;
-  /* Pulled down into the body so the bumps' flat bases are hidden by it. */
-  margin-bottom: -0.95em;
-  height: 1.8em;
-  background-image:
-    radial-gradient(circle 1.65em at 50% 100%, var(--color-pumpkin) 98%, transparent 100%),
-    radial-gradient(circle 1.05em at 50% 100%, var(--color-pumpkin) 98%, transparent 100%),
-    radial-gradient(circle 0.68em at 50% 100%, var(--color-pumpkin) 98%, transparent 100%);
-  background-size:
-    3.1em 100%,
-    2.05em 100%,
-    1.3em 100%;
-  background-position:
-    0 0,
-    1em 0,
-    0.45em 0;
-  background-repeat: repeat-x;
-}
-
-.notice-cloud[data-leaving] {
+.notice-pill[data-leaving] {
   animation: notice-vanish 0.3s ease-in both;
 }
 
-/*
- * In and out. The entrance overshoots slightly and settles — a notice arrives while
- * you are looking at a camera, not at the strip it lands in, and a pop is what
- * catches peripheral vision. The exit is the same motion reversed and quicker, so a
- * cloud is never simply yanked off the screen.
- */
 @keyframes notice-pop {
   0% {
     transform: translateY(-0.6rem) scale(0.86);
@@ -290,11 +258,11 @@ body {
 
 /* The fade still runs: without it a notice would vanish between two frames. */
 @media (prefers-reduced-motion: reduce) {
-  .notice-cloud {
+  .notice-pill {
     animation: notice-fade 0.2s ease-out both;
   }
 
-  .notice-cloud[data-leaving] {
+  .notice-pill[data-leaving] {
     animation: notice-fade 0.2s ease-in reverse both;
   }
 }
